@@ -1,14 +1,16 @@
-"""
-Django settings for config project.
-"""
-
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+SECRET_KEY = os.environ.get('SECRET_KEY')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-*f8_q$l)7d6azjrxvuv2pguci(2#rvqf@t0&_r3unby0%0k*o7'
-
-DEBUG = True
+# SECRET_KEY = 'django-insecure-*f8_q$l)7d6azjrxvuv2pguci(2#rvqf@t0&_r3unby0%0k*o7'
+# DEBUG = True
 
 # ALLOWED_HOSTS = []
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.88.111.43', '10.88.111.16', 'dorsad-vashti-unmutinously.ngrok-free.dev'] # use your actual IP
@@ -56,8 +58,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DB_NAME'),
+        'USER': os.environ.get('DB_USER'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST'),
+        'PORT': '5432',
     }
 }
 
