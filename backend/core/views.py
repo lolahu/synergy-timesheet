@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
-from .models import AccessRequest, MagicLinkToken, Worker, Project, TimeEntry
+from .models import AccessRequest, MagicLinkToken, Worker, Project, TimeEntry, ParkingEntry
 
 User = get_user_model()
 
@@ -285,4 +285,103 @@ def timesheet_success(request):
         "project_name": project_name,
         "week": week,
         "project_id": project_id,
+    })
+
+
+@login_required
+def parking_entry(request):
+    projects = Project.objects.filter(is_active=True).order_by("name")
+    workers = Worker.objects.filter(is_active=True).order_by("display_name")
+    today = date.today().isoformat()
+
+    # Pre-select the logged-in user's own worker profile if it exists
+    own_worker = getattr(request.user, "worker_profile", None)
+
+    context = {
+        "projects": projects,
+        "workers": workers,
+        "today": today,
+        "own_worker": own_worker,
+    }
+
+    if request.method == "POST":
+        worker_id = request.POST.get("worker_id", "").strip()
+        project_id = request.POST.get("project_id", "").strip()
+        work_date = request.POST.get("work_date", "").strip()
+        amount_raw = request.POST.get("amount", "").strip()
+        notes = request.POST.get("notes", "").strip()
+        receipt_file = request.FILES.get("receipt")
+
+        error = None
+        worker = None
+        project = None
+
+        if not worker_id:
+            error = "Please select a worker."
+        else:
+            worker = Worker.objects.filter(id=worker_id, is_active=True).first()
+            if not worker:
+                error = "Invalid worker selected."
+
+        if not project_id:
+            error = error or "Please select a project."
+        else:
+            project = Project.objects.filter(id=project_id, is_active=True).first()
+            if not project:
+                error = error or "Invalid project."
+
+        if not work_date:
+            error = error or "Please select a date."
+
+        if not amount_raw:
+            error = error or "Please enter the parking amount."
+        else:
+            try:
+                amount = Decimal(amount_raw)
+                if amount <= 0:
+                    error = error or "Amount must be greater than 0."
+            except (InvalidOperation, ValueError):
+                error = error or "Invalid amount."
+
+        # Validate file type if provided
+        if receipt_file:
+            allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"]
+            if receipt_file.content_type not in allowed_types:
+                error = error or "Receipt must be an image (JPG, PNG, GIF, WEBP) or PDF."
+
+        if error:
+            context["error"] = error
+            context["prev"] = {
+                "worker_id": worker_id,
+                "project_id": project_id,
+                "work_date": work_date,
+                "amount": amount_raw,
+                "notes": notes,
+            }
+            return render(request, "core/parking_entry.html", context)
+
+        entry = ParkingEntry(
+            worker=worker,
+            project=project,
+            work_date=work_date,
+            amount=amount,
+            notes=notes,
+            submitted_by=request.user,
+            status=ParkingEntry.Status.SUBMITTED,
+        )
+        if receipt_file:
+            entry.receipt = receipt_file
+        entry.save()
+
+        return redirect(f"/parking/success/?project_name={project.name}&work_date={work_date}&amount={amount_raw}")
+
+    return render(request, "core/parking_entry.html", context)
+
+
+@login_required
+def parking_success(request):
+    return render(request, "core/parking_success.html", {
+        "project_name": request.GET.get("project_name", ""),
+        "work_date": request.GET.get("work_date", ""),
+        "amount": request.GET.get("amount", ""),
     })

@@ -7,7 +7,7 @@ from django.urls import path
 from django.utils import timezone
 
 from . import admin_user  # noqa: F401 -- Customize the Admin Site UI
-from .models import AccessRequest, MagicLinkToken, Project, RateOverride, TimeEntry, Worker
+from .models import AccessRequest, MagicLinkToken, ParkingEntry, Project, RateOverride, TimeEntry, Worker
 
 
 def to_monday(d: date) -> date:
@@ -76,9 +76,9 @@ class TimeEntryAdmin(admin.ModelAdmin):
 
         week_end = selected_week + timedelta(days=6)
 
-        # All-time entries — only SUBMITTED (excludes OVERWRITTEN and REJECTED)
+        # All-time entries — SUBMITTED and APPROVED only (excludes OVERWRITTEN and REJECTED)
         all_qs = TimeEntry.objects.select_related("worker", "project").filter(
-            status=TimeEntry.Status.SUBMITTED
+            status__in=[TimeEntry.Status.SUBMITTED, TimeEntry.Status.APPROVED]
         )
         if project_id:
             all_qs = all_qs.filter(project_id=project_id)
@@ -209,3 +209,50 @@ class MagicLinkTokenAdmin(admin.ModelAdmin):
     list_display = ("user", "expires_at", "used_at", "created_at")
     list_filter = ("used_at",)
     search_fields = ("user__email",)
+
+
+@admin.register(ParkingEntry)
+class ParkingEntryAdmin(admin.ModelAdmin):
+    list_display = ("worker", "project", "work_date", "amount", "status", "submitted_by", "receipt_link", "created_at")
+    list_filter = ("status", "project", "work_date")
+    search_fields = ("worker__display_name", "project__name")
+    readonly_fields = ("receipt_preview",)
+
+    def receipt_link(self, obj):
+        if obj.receipt:
+            from django.utils.html import format_html
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener noreferrer">📎 View</a>',
+                obj.receipt.url,
+            )
+        return "—"
+    receipt_link.short_description = "Receipt"
+
+    def receipt_preview(self, obj):
+        if obj.receipt:
+            from django.utils.html import format_html
+            url = obj.receipt.url
+            name = obj.receipt.name.lower()
+            if name.endswith(".pdf"):
+                return format_html(
+                    '<a href="{}" target="_blank" rel="noopener noreferrer">'
+                    '📄 Open PDF in new tab</a>',
+                    url,
+                )
+            else:
+                return format_html(
+                    '<a href="{}" target="_blank" rel="noopener noreferrer">'
+                    '<img src="{}" style="max-width: 400px; max-height: 400px; '
+                    'border: 1px solid #ccc; border-radius: 4px;" />'
+                    '</a>',
+                    url, url,
+                )
+        return "No receipt uploaded."
+    receipt_preview.short_description = "Receipt Preview"
+
+    fieldsets = (
+        ("Submission", {"fields": ("worker", "project", "work_date", "amount", "notes")}),
+        ("Receipt", {"fields": ("receipt", "receipt_preview")}),
+        ("Status", {"fields": ("status", "reviewed_by", "reviewed_at", "review_notes")}),
+        ("Meta", {"fields": ("submitted_by",)}),
+    )

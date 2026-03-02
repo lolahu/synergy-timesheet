@@ -1,19 +1,56 @@
 <!doctype html>
 <html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Request Access — Synergy Timesheet</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/mobile.css' %}" />
+  </head>
   <body>
-    <h3>Request Access</h3>
-    <form method="post">
-      {% csrf_token %}
-      <label>Email</label><br/>
-      <input name="email" type="email" required /><br/><br/>
+    <div class="page">
+      <h3>Request Access</h3>
 
-      <label>Name (optional)</label><br/>
-      <input name="name" type="text" /><br/><br/>
+      <form method="post">
+        {% csrf_token %}
 
-      <label>Phone (optional)</label><br/>
-      <input name="phone" type="text" /><br/><br/>
+        <div class="field">
+          <label>Email</label>
+          <input
+            name="email"
+            type="email"
+            required
+            placeholder="you@example.com"
+            inputmode="email"
+            autocomplete="email"
+          />
+        </div>
 
-      <button type="submit">Request</button>
-    </form>
+        <div class="field">
+          <label>Name <span class="hint">(optional)</span></label>
+          <input
+            name="name"
+            type="text"
+            placeholder="Your full name"
+            autocomplete="name"
+          />
+        </div>
+
+        <div class="field">
+          <label>Phone <span class="hint">(optional)</span></label>
+          <input
+            name="phone"
+            type="tel"
+            placeholder="e.g. 416-555-0123"
+            inputmode="tel"
+            autocomplete="tel"
+          />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Request Access</button>
+      </form>
+
+      <a href="/" class="back-link">← Back to Home</a>
+    </div>
   </body>
 </html>

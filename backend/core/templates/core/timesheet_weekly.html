@@ -4,12 +4,15 @@
     <meta charset="utf-8" />
     <title>Project Weekly Timesheet</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {% load static %}
+    <link rel="stylesheet" href="{% static 'core/mobile.css' %}" />
   </head>
 
   <body>
+    <div class="page">
     {% load core_extras %}
 
-    <h3>Project Weekly Timesheet</h3>
+    <h3>Project Weekly Timesheet (week ending Friday)</h3>
 
     <form method="get" action="/timesheet/" style="margin-bottom: 16px;">
       <label>Project</label>
@@ -22,15 +25,14 @@
         {% endfor %}
       </select>
 
-      
+      <label style="margin-left: 12px;">Week ending (Friday)</label>
+
       {% if is_admin %}
         {# Admins can pick any week freely — value snaps to that week's Monday internally #}
-        <label style="margin-left: 12px;">Week ending (Friday)</label>
         <input type="date" name="week" value="{{ week_friday|date:'Y-m-d' }}" style="height: 36px; margin-left: 4px;" />
 
       {% elif is_monday %}
         {# Foremen on Monday can pick this week or last week #}
-        <label style="margin-left: 12px;">Week ending (Friday)</label>
         <select name="week" style="height: 36px; margin-left: 4px;">
           <option value="{{ this_monday|date:'Y-m-d' }}" {% if week_start == this_monday %}selected{% endif %}>
             This week — {{ this_friday|date:'M j, Y' }}
@@ -63,6 +65,7 @@
           Tip: Leave a cell blank to clear it.
         </p>
 
+        <div class="table-scroll">
         <table id="timesheet-table" border="1" cellpadding="6" cellspacing="0">
           <thead>
             <tr>
@@ -141,17 +144,14 @@
 
           </tbody>
         </table>
+        </div>
 
         <p style="margin-top: 10px;">
-          <button type="button" onclick="addRow()" style="height: 36px; min-width: 120px; font-size: 15px;">
-            + Add Row
-          </button>
+          <button type="button" onclick="addRow()" class="btn btn-secondary">+ Add Row</button>
         </p>
 
         <p style="margin-top: 12px;">
-          <button type="submit" style="height: 44px; min-width: 180px; font-size: 18px;">
-            Save project week
-          </button>
+          <button type="submit" class="btn btn-primary">Save project week</button>
         </p>
       </form>
 
@@ -205,5 +205,6 @@
       }
     </script>
 
+    </div>
   </body>
 </html>

@@ -11,4 +11,8 @@ urlpatterns = [
     # Timesheet
     path("timesheet/success/", views.timesheet_success, name="timesheet_success"),
     path("timesheet/", views.timesheet_weekly, name="timesheet"),
+
+    # Parking
+    path("parking/success/", views.parking_success, name="parking_success"),
+    path("parking/", views.parking_entry, name="parking_entry"),
 ]
