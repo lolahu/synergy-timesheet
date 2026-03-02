@@ -9,7 +9,7 @@
   <body>
     {% load core_extras %}
 
-    <h3>Project Weekly Timesheet (Mon–Sun)</h3>
+    <h3>Project Weekly Timesheet</h3>
 
     <form method="get" action="/timesheet/" style="margin-bottom: 16px;">
       <label>Project</label>
@@ -22,20 +22,28 @@
         {% endfor %}
       </select>
 
-      <label style="margin-left: 12px;">Week of (Monday)</label>
+      
+      {% if is_admin %}
+        {# Admins can pick any week freely — value snaps to that week's Monday internally #}
+        <label style="margin-left: 12px;">Week ending (Friday)</label>
+        <input type="date" name="week" value="{{ week_friday|date:'Y-m-d' }}" style="height: 36px; margin-left: 4px;" />
 
-      {% if is_monday %}
+      {% elif is_monday %}
+        {# Foremen on Monday can pick this week or last week #}
+        <label style="margin-left: 12px;">Week ending (Friday)</label>
         <select name="week" style="height: 36px; margin-left: 4px;">
           <option value="{{ this_monday|date:'Y-m-d' }}" {% if week_start == this_monday %}selected{% endif %}>
-            This week — {{ this_monday|date:'M j, Y' }}
+            This week — {{ this_friday|date:'M j, Y' }}
           </option>
           <option value="{{ last_monday|date:'Y-m-d' }}" {% if week_start == last_monday %}selected{% endif %}>
-            Last week — {{ last_monday|date:'M j, Y' }}
+            Last week — {{ last_friday|date:'M j, Y' }}
           </option>
         </select>
+
       {% else %}
+        {# Everyone else: locked to current week #}
         <input type="hidden" name="week" value="{{ week_start|date:'Y-m-d' }}" />
-        <span style="height: 36px; line-height: 36px; margin-left: 4px;">{{ week_start|date:'M j, Y' }}</span>
+        <span style="height: 36px; line-height: 36px; margin-left: 4px;">{{ week_friday|date:'M j, Y' }}</span>
       {% endif %}
 
       <button type="submit" style="height: 40px; min-width: 80px; margin-left: 12px;">Go</button>
@@ -55,39 +63,90 @@
           Tip: Leave a cell blank to clear it.
         </p>
 
-        <table border="1" cellpadding="6" cellspacing="0">
-          <tr>
-            <th style="text-align:left;">Worker</th>
-            {% for d in days %}
-              <th style="text-align:center;">
-                {{ d|date:"D" }}<br />
-                {{ d|date:"m/d" }}
-              </th>
-            {% endfor %}
-          </tr>
-
-          {% for w in workers %}
+        <table id="timesheet-table" border="1" cellpadding="6" cellspacing="0">
+          <thead>
             <tr>
-              <td style="white-space:nowrap;"><b>{{ w.display_name }}</b></td>
-
+              <th style="text-align:left; min-width: 180px;">Worker</th>
               {% for d in days %}
-                {% with k=w.id|add:"_"|add:d|date:"Y-m-d" %}
+                <th style="text-align:center;">
+                  {{ d|date:"D" }}<br />
+                  {{ d|date:"m/d" }}
+                </th>
+              {% endfor %}
+              <th style="text-align:center;">Remove</th>
+            </tr>
+          </thead>
+          <tbody id="timesheet-body">
+
+            {% for w in prefilled_workers %}
+              <tr>
+                <td>
+                  <select name="row_worker[]" style="width: 170px; height: 34px;">
+                    <option value="">-- Select Worker --</option>
+                    {% for worker in workers %}
+                      <option value="{{ worker.id }}" {% if worker.id == w.id %}selected{% endif %}>
+                        {{ worker.display_name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </td>
+                {% for d in days %}
+                  {% with k=w.id|add:"_"|add:d|date:"Y-m-d" %}
+                    <td style="text-align:center;">
+                      <input
+                        name="row_hours[]"
+                        type="number"
+                        step="0.25"
+                        min="0"
+                        max="24"
+                        style="width: 74px; height: 34px; font-size: 16px; text-align: center;"
+                        value="{{ grid|get_item:k }}"
+                      />
+                    </td>
+                  {% endwith %}
+                {% endfor %}
+                <td style="text-align:center;">
+                  <button type="button" onclick="removeRow(this)" style="color: red; font-size: 16px; background: none; border: none; cursor: pointer;">✕</button>
+                </td>
+              </tr>
+            {% endfor %}
+
+            {% for i in extra_blank_rows %}
+              <tr>
+                <td>
+                  <select name="row_worker[]" style="width: 170px; height: 34px;">
+                    <option value="">-- Select Worker --</option>
+                    {% for worker in workers %}
+                      <option value="{{ worker.id }}">{{ worker.display_name }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                {% for d in days %}
                   <td style="text-align:center;">
                     <input
-                      name="h_{{ w.id }}_{{ d|date:'Y-m-d' }}"
+                      name="row_hours[]"
                       type="number"
                       step="0.25"
                       min="0"
                       max="24"
                       style="width: 74px; height: 34px; font-size: 16px; text-align: center;"
-                      value="{{ grid|get_item:k }}"
                     />
                   </td>
-                {% endwith %}
-              {% endfor %}
-            </tr>
-          {% endfor %}
+                {% endfor %}
+                <td style="text-align:center;">
+                  <button type="button" onclick="removeRow(this)" style="color: red; font-size: 16px; background: none; border: none; cursor: pointer;">✕</button>
+                </td>
+              </tr>
+            {% endfor %}
+
+          </tbody>
         </table>
+
+        <p style="margin-top: 10px;">
+          <button type="button" onclick="addRow()" style="height: 36px; min-width: 120px; font-size: 15px;">
+            + Add Row
+          </button>
+        </p>
 
         <p style="margin-top: 12px;">
           <button type="submit" style="height: 44px; min-width: 180px; font-size: 18px;">
@@ -102,5 +161,49 @@
       </p>
 
     {% endif %}
+
+    {# Safe JSON data for JavaScript — no Django tags inside executable script blocks #}
+    <script type="application/json" id="workers-data">
+      [{% for w in workers %}{"id": {{ w.id }}, "name": "{{ w.display_name|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]
+    </script>
+    <script type="application/json" id="days-data">
+      {{ days|length }}
+    </script>
+
+    <script>
+      const WORKERS = JSON.parse(document.getElementById("workers-data").textContent);
+      const NUM_DAYS = JSON.parse(document.getElementById("days-data").textContent);
+
+      function buildBlankRow() {
+        let workerOptions = '<option value="">-- Select Worker --</option>';
+        WORKERS.forEach(function(w) {
+          workerOptions += '<option value="' + w.id + '">' + w.name + '</option>';
+        });
+
+        let cells = '<td><select name="row_worker[]" style="width: 170px; height: 34px;">' + workerOptions + '</select></td>';
+
+        for (let i = 0; i < NUM_DAYS; i++) {
+          cells += '<td style="text-align:center;"><input name="row_hours[]" type="number" step="0.25" min="0" max="24" style="width: 74px; height: 34px; font-size: 16px; text-align: center;" /></td>';
+        }
+
+        cells += '<td style="text-align:center;"><button type="button" onclick="removeRow(this)" style="color: red; font-size: 16px; background: none; border: none; cursor: pointer;">✕</button></td>';
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = cells;
+        return tr;
+      }
+
+      function addRow() {
+        document.getElementById("timesheet-body").appendChild(buildBlankRow());
+      }
+
+      function removeRow(btn) {
+        const tbody = document.getElementById("timesheet-body");
+        if (tbody.rows.length > 1) {
+          btn.closest("tr").remove();
+        }
+      }
+    </script>
+
   </body>
 </html>

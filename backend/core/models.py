@@ -16,7 +16,7 @@ class Worker(models.Model):
     )
 
     display_name = models.CharField(max_length=120)
-    email = models.EmailField(unique=True)  # <- required + unique
+    email = models.EmailField(unique=True)
     phone = models.CharField(max_length=30, blank=True, null=True)
 
     is_active = models.BooleanField(default=True)
@@ -26,24 +26,24 @@ class Worker(models.Model):
 
     def __str__(self):
         return self.display_name
-    
+
 
 class Project(models.Model):
     name = models.CharField(max_length=160, unique=True)
-    code = models.CharField(max_length=50, blank=True)   # optional internal code
+    code = models.CharField(max_length=50, blank=True)
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
-    
+
+
 class RateOverride(models.Model):
     worker = models.ForeignKey(Worker, on_delete=models.CASCADE, related_name="rate_overrides")
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="rate_overrides")
     hourly_rate = models.DecimalField(max_digits=10, decimal_places=2)
 
-    # optional: allow historical rate changes later
     effective_from = models.DateField(blank=True, null=True)
     effective_to = models.DateField(blank=True, null=True)
 
@@ -54,19 +54,21 @@ class RateOverride(models.Model):
 
     def __str__(self):
         return f"{self.worker} / {self.project} @ {self.hourly_rate}"
-    
+
+
 class TimeEntry(models.Model):
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
         SUBMITTED = "SUBMITTED", "Submitted"
         APPROVED = "APPROVED", "Approved"
         REJECTED = "REJECTED", "Rejected"
+        OVERWRITTEN = "OVERWRITTEN", "Overwritten"  # ← new: previous entry replaced by a newer one
 
     worker = models.ForeignKey(Worker, on_delete=models.PROTECT, related_name="time_entries")
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="time_entries")
 
     work_date = models.DateField()
-    hours = models.DecimalField(max_digits=5, decimal_places=2)  # supports 7.50 etc
+    hours = models.DecimalField(max_digits=5, decimal_places=2)
     notes = models.CharField(max_length=500, blank=True)
 
     entered_by = models.ForeignKey(
@@ -100,13 +102,12 @@ class TimeEntry(models.Model):
             models.Index(fields=["project", "work_date"]),
             models.Index(fields=["worker", "work_date"]),
         ]
-        constraints = [
-            # prevents accidental duplicate entries for same worker/project/day (tweak if needed)
-            models.UniqueConstraint(fields=["worker", "project", "work_date"], name="uniq_worker_project_day")
-        ]
+        # Removed the unique constraint on (worker, project, work_date) so that
+        # overwritten entries can coexist with new ones for the same day.
 
     def __str__(self):
         return f"{self.worker} {self.project} {self.work_date} {self.hours}"
+
 
 class AccessRequest(models.Model):
     class Status(models.TextChoices):
@@ -136,11 +137,8 @@ class AccessRequest(models.Model):
 
 
 class MagicLinkToken(models.Model):
-    """
-    Stores only a hash of the token. Raw token is printed (or emailed) and never stored.
-    """
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="magic_tokens")
-    token_hash = models.CharField(max_length=64, unique=True)  # sha256 hex digest
+    token_hash = models.CharField(max_length=64, unique=True)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)
 

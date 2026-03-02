@@ -106,17 +106,31 @@ def timesheet_weekly(request):
 
     today = date.today()
     is_monday = today.weekday() == 0
+    is_admin = request.user.is_superuser
     this_monday = today - timedelta(days=today.weekday())
     last_monday = this_monday - timedelta(weeks=1)
 
-    # On Mondays, allow choosing this week or last week
-    # On all other days, lock to the current week
-    if is_monday:
-        week_str = request.GET.get("week") or request.POST.get("week")
+    # Fridays for display purposes (Mon + 4 days)
+    this_friday = this_monday + timedelta(days=4)
+    last_friday = last_monday + timedelta(days=4)
+
+    week_str = request.GET.get("week") or request.POST.get("week")
+
+    if is_admin:
+        # Admins can pick any week freely
         if week_str:
             try:
                 week_start = date.fromisoformat(week_str)
-                # Safety: only allow this_monday or last_monday
+                week_start = week_start - timedelta(days=week_start.weekday())
+            except ValueError:
+                week_start = this_monday
+        else:
+            week_start = this_monday
+    elif is_monday:
+        # Foremen on Monday: can pick this week or last week only
+        if week_str:
+            try:
+                week_start = date.fromisoformat(week_str)
                 if week_start not in (this_monday, last_monday):
                     week_start = this_monday
             except ValueError:
@@ -124,8 +138,10 @@ def timesheet_weekly(request):
         else:
             week_start = this_monday
     else:
+        # Everyone else: locked to current week
         week_start = this_monday
 
+    week_friday = week_start + timedelta(days=4)
     days = [week_start + timedelta(days=i) for i in range(7)]
 
     projects = list(Project.objects.filter(is_active=True).order_by("name"))
@@ -144,71 +160,95 @@ def timesheet_weekly(request):
                 "projects": projects,
                 "selected_project": None,
                 "week_start": week_start,
+                "week_friday": week_friday,
                 "days": days,
                 "workers": workers,
                 "grid": {},
                 "is_monday": is_monday,
                 "this_monday": this_monday,
                 "last_monday": last_monday,
+                "this_friday": this_friday,
+                "last_friday": last_friday,
+                "is_admin": is_admin,
             },
         )
 
-    # Prefill existing entries for this project + week for ALL workers
+    # Prefill existing entries for this project + week — only SUBMITTED
     existing = TimeEntry.objects.filter(
         project=selected_project,
         worker__in=workers,
         work_date__gte=days[0],
         work_date__lte=days[-1],
+        status=TimeEntry.Status.SUBMITTED,
     )
 
     # Key: "{worker_id}_{YYYY-MM-DD}" -> hours
     grid = {f"{e.worker_id}_{e.work_date.isoformat()}": str(e.hours) for e in existing}
 
+    # Workers that already have saved entries this week (for pre-filled rows)
+    prefilled_worker_ids = list(dict.fromkeys(e.worker_id for e in existing))
+    prefilled_workers = [w for w in workers if w.id in prefilled_worker_ids]
+
+    # Pad up to 10 rows total with blank rows
+    blank_row_count = max(0, 10 - len(prefilled_workers))
+    extra_blank_rows = range(blank_row_count)
+
     if request.method == "POST":
-        for key, raw in request.POST.items():
-            if not key.startswith("h_"):
-                continue
+        # New row-based format: row_worker[] and row_hours[] are parallel lists
+        # row_hours[] has 7 values per worker row (one per day)
+        worker_ids = request.POST.getlist("row_worker[]")
+        all_hours = request.POST.getlist("row_hours[]")
 
-            parts = key.split("_", 2)  # ["h", "<worker_id>", "<YYYY-MM-DD>"]
-            if len(parts) != 3:
-                continue
+        for row_index, worker_id_str in enumerate(worker_ids):
+            if not worker_id_str:
+                continue  # skip rows with no worker selected
 
-            _, worker_id_str, day_str = parts
-            raw = (raw or "").strip()
+            # Extract this row's 7 hour values
+            day_hours = all_hours[row_index * 7: row_index * 7 + 7]
 
-            # blank = delete
-            if raw == "":
-                TimeEntry.objects.filter(
+            for day_offset, raw in enumerate(day_hours):
+                day = days[day_offset]
+                day_str = day.isoformat()
+                raw = (raw or "").strip()
+
+                # blank = delete only the active SUBMITTED entry, keep history
+                if raw == "":
+                    TimeEntry.objects.filter(
+                        worker_id=worker_id_str,
+                        project=selected_project,
+                        work_date=day_str,
+                        status=TimeEntry.Status.SUBMITTED,
+                    ).delete()
+                    continue
+
+                try:
+                    hours = Decimal(raw)
+                except (InvalidOperation, ValueError):
+                    continue
+
+                if hours < 0 or hours > 24:
+                    continue
+
+                # Mark any existing active entry for this worker/project/day as OVERWRITTEN,
+                # then create a fresh SUBMITTED entry to preserve the history.
+                existing_qs = TimeEntry.objects.filter(
                     worker_id=worker_id_str,
                     project=selected_project,
                     work_date=day_str,
-                ).delete()
-                continue
+                ).exclude(status=TimeEntry.Status.OVERWRITTEN)
 
-            try:
-                hours = Decimal(raw)
-            except (InvalidOperation, ValueError):
-                continue
+                if existing_qs.exists():
+                    existing_qs.update(status=TimeEntry.Status.OVERWRITTEN)
 
-            if hours < 0 or hours > 24:
-                continue
-
-            entry, created = TimeEntry.objects.get_or_create(
-                worker_id=worker_id_str,
-                project=selected_project,
-                work_date=day_str,
-                defaults={
-                    "hours": hours,
-                    "notes": "",
-                    "entered_by": request.user,
-                    "status": TimeEntry.Status.SUBMITTED,
-                },
-            )
-            if not created:
-                entry.hours = hours
-                entry.entered_by = request.user
-                entry.status = TimeEntry.Status.SUBMITTED
-                entry.save(update_fields=["hours", "entered_by", "status", "updated_at"])
+                TimeEntry.objects.create(
+                    worker_id=worker_id_str,
+                    project=selected_project,
+                    work_date=day_str,
+                    hours=hours,
+                    notes="",
+                    entered_by=request.user,
+                    status=TimeEntry.Status.SUBMITTED,
+                )
 
         return redirect(f"/timesheet/success/?project_id={selected_project.id}&week={week_start.isoformat()}&project_name={selected_project.name}")
 
@@ -220,12 +260,18 @@ def timesheet_weekly(request):
             "projects": projects,
             "selected_project": selected_project,
             "week_start": week_start,
+            "week_friday": week_friday,
             "days": days,
             "workers": workers,
             "grid": grid,
+            "prefilled_workers": prefilled_workers,
+            "extra_blank_rows": extra_blank_rows,
             "is_monday": is_monday,
             "this_monday": this_monday,
             "last_monday": last_monday,
+            "this_friday": this_friday,
+            "last_friday": last_friday,
+            "is_admin": is_admin,
         },
     )
 
@@ -240,101 +286,3 @@ def timesheet_success(request):
         "week": week,
         "project_id": project_id,
     })
-
-
-# def get_target_worker(request, *, allow_none_for_foreman: bool = False):
-#     """
-#     - Regular worker: return their own worker_profile
-#     - Foreman/admin: if worker_id provided, return that worker
-#       otherwise:
-#         - if allow_none_for_foreman=True, return None (so UI can show picker)
-#         - else fall back to None
-#     """
-#     if can_enter_for_others(request.user):
-#         worker_id = request.POST.get("worker_id") or request.GET.get("worker_id")
-#         if worker_id:
-#             return Worker.objects.filter(id=worker_id, is_active=True).first()
-#         return None if allow_none_for_foreman else None
-
-#     return getattr(request.user, "worker_profile", None)
-
-
-# @login_required
-# def timesheet_entry(request):
-#     worker = get_target_worker(request)
-#     if not worker or not worker.is_active:
-#         return render(request, "core/not_a_worker.html")
-
-#     projects = Project.objects.filter(is_active=True).order_by("name")
-#     workers = Worker.objects.filter(is_active=True).order_by("display_name") if can_enter_for_others(request.user) else None
-
-#     context = {
-#         "projects": projects,
-#         "workers": workers,
-#         "selected_worker": worker,
-#         "today": date.today().isoformat(),
-#         "can_pick_worker": can_enter_for_others(request.user),
-#     }
-
-#     if request.method == "POST":
-#         project_id = request.POST.get("project_id")
-#         work_date = request.POST.get("work_date")
-#         hours_raw = (request.POST.get("hours") or "").strip()
-#         notes = (request.POST.get("notes") or "").strip()
-
-#         error = None
-#         project = None
-
-#         if not project_id:
-#             error = "Please choose a project."
-#         else:
-#             project = Project.objects.filter(id=project_id, is_active=True).first()
-#             if not project:
-#                 error = "Invalid project."
-
-#         if not work_date:
-#             error = error or "Please choose a date."
-
-#         if not hours_raw:
-#             error = error or "Please enter hours."
-#         else:
-#             try:
-#                 hours = Decimal(hours_raw)
-#                 if hours < 0 or hours > 24:
-#                     error = error or "Hours must be between 0 and 24."
-#             except (InvalidOperation, ValueError):
-#                 error = error or "Invalid hours."
-
-#         if error:
-#             context["error"] = error
-#             context["prev"] = {"project_id": project_id, "work_date": work_date, "hours": hours_raw, "notes": notes}
-#             return render(request, "core/timesheet_entry.html", context)
-
-#         # UPSERT: update if exists, else create
-#         entry, created = TimeEntry.objects.get_or_create(
-#             worker=worker,
-#             project=project,
-#             work_date=work_date,
-#             defaults={
-#                 "hours": hours,
-#                 "notes": notes,
-#                 "entered_by": request.user,
-#                 "status": TimeEntry.Status.SUBMITTED,
-#             },
-#         )
-#         if not created:
-#             entry.hours = hours
-#             entry.notes = notes
-#             entry.entered_by = request.user
-#             entry.status = TimeEntry.Status.SUBMITTED
-#             entry.save()
-
-#         return render(
-#             request,
-#             "core/timesheet_success.html",
-#             {"entry": entry, "created": created},
-#         )
-
-#     return render(request, "core/timesheet_entry.html", context)
-
-
