@@ -1,0 +1,55 @@
+<!-- backend/core/templates/core/home.html -->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Synergy Timesheet</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/mobile.css' %}" />
+  </head>
+  <body>
+    <div class="page">
+      <h2>Synergy Timesheet</h2>
+
+      {% if user.is_authenticated %}
+        <p class="text-muted">Logged in as <b>{{ user.email|default:user.username }}</b></p>
+
+        <div class="home-menu">
+          <a href="/timesheet/" class="menu-item">
+            <span class="icon">🕐</span> Timesheet
+          </a>
+          <a href="/parking/" class="menu-item">
+            <span class="icon">🅿️</span> Parking
+          </a>
+          {% if user.is_staff %}
+            <a href="/admin/" class="menu-item">
+              <span class="icon">⚙️</span> Admin Dashboard
+            </a>
+          {% else %}
+            <a href="/admin/login/?next=/admin/" class="menu-item">
+              <span class="icon">🔒</span> Admin Login
+            </a>
+          {% endif %}
+          <a href="/logout/" class="menu-item">
+            <span class="icon">👋</span> Log Out
+          </a>
+        </div>
+
+      {% else %}
+        <p>You are not logged in.</p>
+        <div class="home-menu">
+          <a href="/login/" class="menu-item">
+            <span class="icon">✉️</span> Send me a login link
+          </a>
+          <a href="/request-access/" class="menu-item">
+            <span class="icon">📋</span> Request Access
+          </a>
+          <a href="/admin/login/?next=/admin/" class="menu-item">
+            <span class="icon">🔒</span> Admin Login
+          </a>
+        </div>
+      {% endif %}
+    </div>
+  </body>
+</html>

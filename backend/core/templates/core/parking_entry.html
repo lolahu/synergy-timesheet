@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Parking Submission</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/mobile.css' %}" />
+  </head>
+  <body>
+    <div class="page">
+      <h3>Parking Submission</h3>
+
+      {% if error %}
+        <div class="alert-error">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="field">
+          <label>Worker</label>
+          <select name="worker_id" required>
+            <option value="">-- Select --</option>
+            {% for w in workers %}
+              <option value="{{ w.id }}"
+                {% if prev.worker_id == w.id|stringformat:"s" %}selected
+                {% elif not prev and own_worker and own_worker.id == w.id %}selected
+                {% endif %}>
+                {{ w.display_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Project</label>
+          <select name="project_id" required>
+            <option value="">-- Select --</option>
+            {% for p in projects %}
+              <option value="{{ p.id }}"
+                {% if prev.project_id == p.id|stringformat:"s" %}selected{% endif %}>
+                {{ p.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Work Date</label>
+          <input
+            type="date"
+            name="work_date"
+            value="{{ prev.work_date|default:today }}"
+            required
+          />
+        </div>
+
+        <div class="field">
+          <label>Parking Amount ($)</label>
+          <input
+            type="number"
+            name="amount"
+            value="{{ prev.amount|default:'' }}"
+            step="0.01"
+            min="0.01"
+            required
+            placeholder="e.g. 12.50"
+            inputmode="decimal"
+          />
+        </div>
+
+        <div class="field">
+          <label>
+            Receipt
+            <span class="hint">(optional — photo or PDF, max 10MB)</span>
+          </label>
+          <input
+            type="file"
+            name="receipt"
+            accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,application/pdf"
+          />
+          <p class="text-muted" style="margin: 6px 0 0;">
+            📱 On your phone you can take a photo directly or choose from your gallery.
+          </p>
+        </div>
+
+        <div class="field">
+          <label>
+            Notes
+            <span class="hint">(optional)</span>
+          </label>
+          <input
+            type="text"
+            name="notes"
+            value="{{ prev.notes|default:'' }}"
+            maxlength="500"
+            placeholder="e.g. downtown lot"
+          />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Submit Parking</button>
+      </form>
+
+      <a href="/" class="back-link">← Home</a>
+    </div>
+  </body>
+</html>

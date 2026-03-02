@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Login — Synergy Timesheet</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/mobile.css' %}" />
+  </head>
+  <body>
+    <div class="page">
+      <h3>Login</h3>
+
+      <form method="post">
+        {% csrf_token %}
+
+        <div class="field">
+          <label>Email</label>
+          <input
+            name="email"
+            type="email"
+            required
+            placeholder="you@example.com"
+            inputmode="email"
+            autocomplete="email"
+          />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Send me a login link</button>
+      </form>
+
+      <a href="/request-access/" class="back-link">Don't have access? Request it here</a>
+    </div>
+  </body>
+</html>

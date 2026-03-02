@@ -1,0 +1,71 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <h1>Weekly Hours Dashboard</h1>
+
+  <form method="get" style="margin: 12px 0 18px 0;">
+    <label>Week ending (Friday):</label>
+    <input type="date" name="week" value="{{ selected_week_friday }}" />
+
+    <label style="margin-left: 12px;">Project:</label>
+    <select name="project_id">
+      <option value="">All</option>
+      {% for p in projects %}
+        <option value="{{ p.id }}" {% if selected_project_id == p.id|stringformat:"s" %}selected{% endif %}>
+          {{ p.name }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <label style="margin-left: 12px;">Worker:</label>
+    <select name="worker_id">
+      <option value="">All</option>
+      {% for w in workers %}
+        <option value="{{ w.id }}" {% if selected_worker_id == w.id|stringformat:"s" %}selected{% endif %}>
+          {{ w.display_name }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <button type="submit" style="margin-left: 12px;">Filter</button>
+  </form>
+
+  <table class="adminlist" style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Week ending (Fri)</th>
+        <th style="text-align:left;">Worker</th>
+        <th style="text-align:left;">Project</th>
+        <th style="text-align:right;">Week hours</th>
+        <th style="text-align:right;">Cumulative hours</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.week_friday|date:"Y-m-d" }}</td>
+          <td>{{ r.worker.display_name }}</td>
+          <td>{{ r.project.name }}</td>
+          <td style="text-align:right;">{{ r.total_hours }}</td>
+          <td style="text-align:right;">{{ r.cumulative_hours }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No records found for the selected filters.</td></tr>
+      {% endfor %}
+    </tbody>
+
+    {% if rows %}
+      <tfoot>
+        <tr style="font-weight: bold; border-top: 2px solid #ccc;">
+          <td colspan="3" style="text-align:right; padding-right: 8px;">Total</td>
+          <td style="text-align:right;">{{ total_week_hours }}</td>
+          <td style="text-align:right;">{{ total_cumulative_hours }}</td>
+        </tr>
+      </tfoot>
+    {% endif %}
+  </table>
+
+  <p style="margin-top: 16px;">
+    <a href="../">Back to Time entries</a>
+  </p>
+{% endblock %}

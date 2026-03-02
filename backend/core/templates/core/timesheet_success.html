@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Timesheet Saved</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/mobile.css' %}" />
+  </head>
+  <body>
+    <div class="page success-page">
+      <div class="icon">✅</div>
+      <h2>Timesheet Saved!</h2>
+      <p>
+        Hours for <strong>{{ project_name }}</strong>
+        (week of {{ week }}) have been recorded.
+      </p>
+      <div class="actions">
+        <a href="/timesheet/?project_id={{ project_id }}&week={{ week }}" class="btn btn-primary">← Back to Timesheet</a>
+        <a href="/" class="btn btn-secondary">🏠 Home</a>
+      </div>
+    </div>
+  </body>
+</html>
