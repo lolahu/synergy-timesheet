@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <body>
+    <h2>Synergy Timesheet</h2>
+
+    {% if user.is_authenticated %}
+      <p>Logged in as: <b>{{ user.email|default:user.username }}</b></p>
+      <p><a href="/admin/">Admin</a> (if you have access)</p>
+      <p><a href="/logout/">Log out</a></p>
+      <p><a href="/timesheet/">Enter hours</a></p>
+    {% else %}
+      <p>You are not logged in.</p>
+      <ul>
+        <li><a href="/login/">Send me a login link</a></li>
+        <li><a href="/request-access/">Request access</a></li>
+      </ul>
+    {% endif %}
+  </body>
+</html>

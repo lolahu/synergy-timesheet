@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <body>
+    <h3>Request Access</h3>
+    <form method="post">
+      {% csrf_token %}
+      <label>Email</label><br/>
+      <input name="email" type="email" required /><br/><br/>
+
+      <label>Name (optional)</label><br/>
+      <input name="name" type="text" /><br/><br/>
+
+      <label>Phone (optional)</label><br/>
+      <input name="phone" type="text" /><br/><br/>
+
+      <button type="submit">Request</button>
+    </form>
+  </body>
+</html>

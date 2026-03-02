@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+  <body>
+    <h3>Enter Hours</h3>
+
+    {% if error %}
+      <p style="color:red;"><b>{{ error }}</b></p>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+
+      <label>Project</label><br/>
+      <select name="project_id" required style="min-width: 240px; height: 36px;">
+        <option value="">-- Select --</option>
+        {% for p in projects %}
+          <option value="{{ p.id }}"
+            {% if prev.project_id == p.id|stringformat:"s" %}selected{% endif %}
+          >{{ p.name }}</option>
+        {% endfor %}
+      </select>
+      <br/><br/>
+
+      <label>Date</label><br/>
+      <input name="work_date" type="date" value="{{ prev.work_date|default:today }}" required style="height: 36px;"/>
+      <br/><br/>
+
+      <label>Hours</label><br/>
+      <input name="hours" type="number" step="0.25" min="0" max="24"
+             value="{{ prev.hours|default:'' }}"
+             required style="height: 36px; width: 120px; font-size: 18px;"/>
+      <br/><br/>
+
+      <label>Notes (optional)</label><br/>
+      <input name="notes" type="text" value="{{ prev.notes|default:'' }}"
+             style="min-width: 320px; height: 36px;"/>
+      <br/><br/>
+
+      <button type="submit" style="height: 44px; min-width: 160px; font-size: 18px;">
+        Submit
+      </button>
+    </form>
+
+    <p style="margin-top: 24px;"><a href="/">Home</a></p>
+  </body>
+</html>
