@@ -1,17 +1,40 @@
-<!doctype html>
+<!-- <!doctype html>
 <html>
   <body>
-    <h3>{% if created %}Submitted ✅{% else %}Updated ✅{% endif %}</h3>
-
-    <p>
-      <b>{{ entry.worker }}</b> — {{ entry.project }} — {{ entry.work_date }} — {{ entry.hours }} hours
-    </p>
-
-    {% if entry.notes %}
-      <p>Notes: {{ entry.notes }}</p>
-    {% endif %}
-
+    <div style="text-align: center; padding: 60px 20px;">
+    <h2>✅ Timesheet Submitted!</h2>
+    <p>Your hours have been recorded successfully.</p>
     <p><a href="/timesheet/">Enter another</a></p>
     <p><a href="/">Home</a></p>
+</div>
+  </body>
+</html> -->
+
+
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Timesheet Saved</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body style="font-family: sans-serif; text-align: center; padding: 60px 20px;">
+
+    <h2>✅ Timesheet Saved!</h2>
+    <p style="color: #555; font-size: 16px;">
+      Hours for <strong>{{ project_name }}</strong> (week of {{ week }}) have been recorded.
+    </p>
+
+    <div style="margin-top: 32px; display: flex; gap: 12px; justify-content: center;">
+      <a href="/timesheet/?project_id={{ project_id }}&week={{ week }}"
+         style="padding: 10px 20px; background: #417690; color: white; text-decoration: none; border-radius: 4px;">
+        ← Back to Timesheet
+      </a>
+      <a href="/"
+         style="padding: 10px 20px; background: #555; color: white; text-decoration: none; border-radius: 4px;">
+        🏠 Home
+      </a>
+    </div>
+
   </body>
 </html>

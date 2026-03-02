@@ -7,6 +7,8 @@ urlpatterns = [
     path("login/", views.login_request, name="login_request"),
     path("magic/<str:token>/", views.magic_login, name="magic_login"),
     path("logout/", views.logout_view, name="logout"),
-    path("timesheet/", views.timesheet_entry, name="timesheet_entry"),
-    path("timesheet/weekly/", views.timesheet_weekly, name="timesheet_weekly"),
+
+    # Timesheet
+    path("timesheet/success/", views.timesheet_success, name="timesheet_success"),
+    path("timesheet/", views.timesheet_weekly, name="timesheet"),
 ]
