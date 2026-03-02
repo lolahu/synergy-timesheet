@@ -6,6 +6,9 @@ from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from datetime import date
 from django.db import IntegrityError
+from django.shortcuts import get_object_or_404
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 
 from .models import AccessRequest, MagicLinkToken, Worker, Project, TimeEntry
 
@@ -14,7 +17,6 @@ User = get_user_model()
 
 def home(request):
     return render(request, "core/home.html")
-
 
 def request_access(request):
     if request.method == "POST":
@@ -93,57 +95,180 @@ def logout_view(request):
     logout(request)
     return redirect("home")
 
+def can_enter_for_others(user) -> bool:
+    return user.is_staff or user.groups.filter(name="FOREMAN").exists()
+
+def get_target_worker(request):
+    """
+    If foreman/admin: allow selecting worker via ?worker_id= or POST worker_id.
+    Otherwise: use own worker_profile.
+    """
+    if can_enter_for_others(request.user):
+        worker_id = request.POST.get("worker_id") or request.GET.get("worker_id")
+        if worker_id:
+            return Worker.objects.filter(id=worker_id, is_active=True).first()
+    return getattr(request.user, "worker_profile", None)
+
 @login_required
 def timesheet_entry(request):
-    worker = getattr(request.user, "worker_profile", None)
+    worker = get_target_worker(request)
     if not worker or not worker.is_active:
         return render(request, "core/not_a_worker.html")
 
     projects = Project.objects.filter(is_active=True).order_by("name")
+    workers = Worker.objects.filter(is_active=True).order_by("display_name") if can_enter_for_others(request.user) else None
 
     context = {
         "projects": projects,
+        "workers": workers,
+        "selected_worker": worker,
         "today": date.today().isoformat(),
+        "can_pick_worker": can_enter_for_others(request.user),
     }
 
     if request.method == "POST":
         project_id = request.POST.get("project_id")
         work_date = request.POST.get("work_date")
-        hours = request.POST.get("hours")
+        hours_raw = (request.POST.get("hours") or "").strip()
         notes = (request.POST.get("notes") or "").strip()
 
-        # Basic validation (keep it simple)
         error = None
+        project = None
+
         if not project_id:
             error = "Please choose a project."
-        elif not work_date:
-            error = "Please choose a date."
-        elif not hours:
-            error = "Please enter hours."
-
-        if not error:
+        else:
             project = Project.objects.filter(id=project_id, is_active=True).first()
             if not project:
                 error = "Invalid project."
 
-        if not error:
-            try:
-                entry = TimeEntry.objects.create(
-                    worker=worker,
-                    project=project,
-                    work_date=work_date,
-                    hours=hours,
-                    notes=notes,
-                    entered_by=request.user,
-                    status=TimeEntry.Status.SUBMITTED,  # submit immediately (better UX)
-                )
-                return render(request, "core/timesheet_success.html", {"entry": entry})
-            except IntegrityError:
-                # UniqueConstraint worker+project+work_date hit
-                error = "An entry already exists for this worker/project/date. Please edit it in admin for now."
+        if not work_date:
+            error = error or "Please choose a date."
 
-        context["error"] = error
-        context["prev"] = {"project_id": project_id, "work_date": work_date, "hours": hours, "notes": notes}
-        return render(request, "core/timesheet_entry.html", context)
+        if not hours_raw:
+            error = error or "Please enter hours."
+        else:
+            try:
+                hours = Decimal(hours_raw)
+                if hours < 0 or hours > 24:
+                    error = error or "Hours must be between 0 and 24."
+            except (InvalidOperation, ValueError):
+                error = error or "Invalid hours."
+
+        if error:
+            context["error"] = error
+            context["prev"] = {"project_id": project_id, "work_date": work_date, "hours": hours_raw, "notes": notes}
+            return render(request, "core/timesheet_entry.html", context)
+
+        # UPSERT: update if exists, else create
+        entry, created = TimeEntry.objects.get_or_create(
+            worker=worker,
+            project=project,
+            work_date=work_date,
+            defaults={
+                "hours": hours,
+                "notes": notes,
+                "entered_by": request.user,
+                "status": TimeEntry.Status.SUBMITTED,
+            },
+        )
+        if not created:
+            entry.hours = hours
+            entry.notes = notes
+            entry.entered_by = request.user
+            entry.status = TimeEntry.Status.SUBMITTED
+            entry.save()
+
+        return render(
+            request,
+            "core/timesheet_success.html",
+            {"entry": entry, "created": created},
+        )
 
     return render(request, "core/timesheet_entry.html", context)
+
+@login_required
+def timesheet_weekly(request):
+    worker = get_target_worker(request)
+    if not worker or not worker.is_active:
+        return render(request, "core/not_a_worker.html")
+
+    # Choose week start (Monday)
+    week_str = request.GET.get("week")  # YYYY-MM-DD
+    if week_str:
+        week_start = date.fromisoformat(week_str)
+    else:
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())  # Monday
+
+    # Normalize to Monday if user passed some other day
+    week_start = week_start - timedelta(days=week_start.weekday())
+    days = [week_start + timedelta(days=i) for i in range(7)]
+    day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    projects = list(Project.objects.filter(is_active=True).order_by("name"))
+    workers = Worker.objects.filter(is_active=True).order_by("display_name") if can_enter_for_others(request.user) else None
+
+    # Existing entries in that week for this worker
+    existing = TimeEntry.objects.filter(
+        worker=worker,
+        work_date__gte=days[0],
+        work_date__lte=days[-1],
+        project__in=projects,
+    ).select_related("project")
+
+    # Map (project_id, date_iso) -> hours
+    grid = {}
+    for e in existing:
+        grid[(e.project_id, e.work_date.isoformat())] = str(e.hours)
+
+    if request.method == "POST":
+        # Upsert non-empty cells
+        for p in projects:
+            for d in days:
+                field = f"h_{p.id}_{d.isoformat()}"
+                raw = (request.POST.get(field) or "").strip()
+                if raw == "":
+                    continue  # leave unchanged for v1
+
+                try:
+                    hours = Decimal(raw)
+                except Exception:
+                    continue  # skip invalid cell for v1 (we can add errors later)
+
+                if hours < 0 or hours > 24:
+                    continue
+
+                entry, created = TimeEntry.objects.get_or_create(
+                    worker=worker,
+                    project=p,
+                    work_date=d,
+                    defaults={
+                        "hours": hours,
+                        "notes": "",
+                        "entered_by": request.user,
+                        "status": TimeEntry.Status.SUBMITTED,
+                    },
+                )
+                if not created:
+                    entry.hours = hours
+                    entry.entered_by = request.user
+                    entry.status = TimeEntry.Status.SUBMITTED
+                    entry.save()
+
+        return redirect(f"/timesheet/weekly/?week={week_start.isoformat()}&worker_id={worker.id}")
+
+    return render(
+        request,
+        "core/timesheet_weekly.html",
+        {
+            "projects": projects,
+            "workers": workers,
+            "selected_worker": worker,
+            "can_pick_worker": can_enter_for_others(request.user),
+            "week_start": week_start,
+            "days": days,
+            "day_labels": day_labels,
+            "grid": grid,
+        },
+    )

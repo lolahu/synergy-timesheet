@@ -10,6 +10,18 @@
     <form method="post">
       {% csrf_token %}
 
+      {% if can_pick_worker %}
+    <label>Worker</label><br/>
+    <select name="worker_id" required style="min-width: 240px; height: 36px;">
+        {% for w in workers %}
+        <option value="{{ w.id }}" {% if selected_worker.id == w.id %}selected{% endif %}>
+            {{ w.display_name }}
+        </option>
+        {% endfor %}
+    </select>
+    <br/><br/>
+    {% endif %}
+
       <label>Project</label><br/>
       <select name="project_id" required style="min-width: 240px; height: 36px;">
         <option value="">-- Select --</option>

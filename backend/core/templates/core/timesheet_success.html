@@ -1,13 +1,16 @@
 <!doctype html>
 <html>
   <body>
-    <h3>Submitted ✅</h3>
+    <h3>{% if created %}Submitted ✅{% else %}Updated ✅{% endif %}</h3>
+
     <p>
       <b>{{ entry.worker }}</b> — {{ entry.project }} — {{ entry.work_date }} — {{ entry.hours }} hours
     </p>
+
     {% if entry.notes %}
       <p>Notes: {{ entry.notes }}</p>
     {% endif %}
+
     <p><a href="/timesheet/">Enter another</a></p>
     <p><a href="/">Home</a></p>
   </body>

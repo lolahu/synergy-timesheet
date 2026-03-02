@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Weekly Timesheet</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+
+  <body>
+    {% load core_extras %}
+
+    <h3>Weekly Timesheet (Mon–Sun)</h3>
+
+    <!-- Controls: worker (foreman) + week picker -->
+    <form method="get" style="margin-bottom: 16px;">
+      {% if can_pick_worker %}
+        <label>Worker</label>
+        <select name="worker_id" style="min-width: 240px; height: 36px;">
+          {% for w in workers %}
+            <option value="{{ w.id }}" {% if selected_worker.id == w.id %}selected{% endif %}>
+              {{ w.display_name }}
+            </option>
+          {% endfor %}
+        </select>
+      {% endif %}
+
+      <label style="margin-left: 12px;">Week of (Monday)</label>
+      <input type="date" name="week" value="{{ week_start|date:'Y-m-d' }}" style="height: 36px;" />
+      <button type="submit" style="height: 40px; min-width: 80px;">Go</button>
+    </form>
+
+    <!-- Weekly grid -->
+    <form method="post">
+      {% csrf_token %}
+
+      {% if can_pick_worker %}
+        <input type="hidden" name="worker_id" value="{{ selected_worker.id }}" />
+      {% endif %}
+
+      <table border="1" cellpadding="6" cellspacing="0">
+        <tr>
+          <th style="text-align:left;">Project</th>
+          {% for d in days %}
+            <th style="text-align:center;">
+              {{ d|date:"D" }}<br />
+              {{ d|date:"m/d" }}
+            </th>
+          {% endfor %}
+        </tr>
+
+        {% for p in projects %}
+          <tr>
+            <td style="white-space:nowrap;"><b>{{ p.name }}</b></td>
+
+            {% for d in days %}
+              {% with k=p.id|add:"_"|add:d|date:"Y-m-d" %}
+                <td style="text-align:center;">
+                  <input
+                    name="h_{{ p.id }}_{{ d|date:'Y-m-d' }}"
+                    type="number"
+                    step="0.25"
+                    min="0"
+                    max="24"
+                    style="width: 74px; height: 34px; font-size: 16px; text-align: center;"
+                    value="{{ grid|get_item:k }}"
+                  />
+                </td>
+              {% endwith %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </table>
+
+      <p style="margin-top: 12px;">
+        <button type="submit" style="height: 44px; min-width: 160px; font-size: 18px;">
+          Save week
+        </button>
+      </p>
+    </form>
+
+    <p>
+      <a href="/timesheet/">Single entry</a> ·
+      <a href="/">Home</a>
+    </p>
+  </body>
+</html>
