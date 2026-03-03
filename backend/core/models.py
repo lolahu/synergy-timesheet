@@ -1,7 +1,5 @@
 # core/models.py
 from django.utils import timezone
-import secrets
-import hashlib
 from datetime import timedelta
 from django.conf import settings
 from django.db import models
@@ -38,22 +36,6 @@ class Project(models.Model):
     def __str__(self):
         return self.name
 
-
-class RateOverride(models.Model):
-    worker = models.ForeignKey(Worker, on_delete=models.CASCADE, related_name="rate_overrides")
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="rate_overrides")
-    hourly_rate = models.DecimalField(max_digits=10, decimal_places=2)
-
-    effective_from = models.DateField(blank=True, null=True)
-    effective_to = models.DateField(blank=True, null=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["worker", "project", "effective_from"], name="uniq_worker_project_effective")
-        ]
-
-    def __str__(self):
-        return f"{self.worker} / {self.project} @ {self.hourly_rate}"
 
 
 class TimeEntry(models.Model):
@@ -154,68 +136,3 @@ class ParkingEntry(models.Model):
 
     def __str__(self):
         return f"{self.worker} {self.project} {self.work_date} ${self.amount}"
-
-
-class AccessRequest(models.Model):
-    class Status(models.TextChoices):
-        PENDING = "PENDING", "Pending"
-        APPROVED = "APPROVED", "Approved"
-        REJECTED = "REJECTED", "Rejected"
-
-    email = models.EmailField(unique=True)
-    requested_name = models.CharField(max_length=120, blank=True)
-    requested_phone = models.CharField(max_length=30, blank=True)
-
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    requested_at = models.DateTimeField(auto_now_add=True)
-
-    reviewed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="access_requests_reviewed",
-    )
-    reviewed_at = models.DateTimeField(null=True, blank=True)
-    review_notes = models.TextField(blank=True)
-
-    def __str__(self):
-        return f"{self.email} ({self.status})"
-
-
-class MagicLinkToken(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="magic_tokens")
-    token_hash = models.CharField(max_length=64, unique=True)
-    expires_at = models.DateTimeField()
-    used_at = models.DateTimeField(null=True, blank=True)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    @staticmethod
-    def make_token() -> str:
-        return secrets.token_urlsafe(32)
-
-    @staticmethod
-    def hash_token(raw_token: str) -> str:
-        return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-
-    @classmethod
-    def create_for_user(cls, user, ttl_minutes: int = 15):
-        raw = cls.make_token()
-        token_hash = cls.hash_token(raw)
-        obj = cls.objects.create(
-            user=user,
-            token_hash=token_hash,
-            expires_at=timezone.now() + timedelta(minutes=ttl_minutes),
-        )
-        return obj, raw
-
-    def is_valid(self) -> bool:
-        return self.used_at is None and timezone.now() < self.expires_at
-
-    def mark_used(self):
-        self.used_at = timezone.now()
-        self.save(update_fields=["used_at"])
-
-    def __str__(self):
-        return f"{self.user.email} exp={self.expires_at} used={bool(self.used_at)}"

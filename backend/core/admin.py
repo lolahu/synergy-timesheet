@@ -2,12 +2,17 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.shortcuts import render
 from django.urls import path
 from django.utils import timezone
+from django.utils.html import format_html
 
 from . import admin_user  # noqa: F401 -- Customize the Admin Site UI
-from .models import AccessRequest, MagicLinkToken, ParkingEntry, Project, RateOverride, TimeEntry, Worker
+from .models import ParkingEntry, Project, TimeEntry, Worker
+
+User = get_user_model()
 
 
 def to_monday(d: date) -> date:
@@ -27,11 +32,6 @@ class ProjectAdmin(admin.ModelAdmin):
     search_fields = ("name", "code")
     list_filter = ("is_active",)
 
-
-@admin.register(RateOverride)
-class RateOverrideAdmin(admin.ModelAdmin):
-    list_display = ("worker", "project", "hourly_rate", "effective_from", "effective_to")
-    list_filter = ("project", "worker")
 
 
 @admin.register(TimeEntry)
@@ -142,74 +142,6 @@ class TimeEntryAdmin(admin.ModelAdmin):
         return render(request, "admin/core/timeentry/weekly_dashboard.html", context)
 
 
-@admin.register(AccessRequest)
-class AccessRequestAdmin(admin.ModelAdmin):
-    list_display = ("email", "status", "requested_at", "reviewed_by", "reviewed_at")
-    list_filter = ("status",)
-    search_fields = ("email", "requested_name")
-
-    actions = ["approve_and_create_worker"]
-
-    def _ensure_worker_for_request(self, req: AccessRequest) -> Worker:
-        email = (req.email or "").strip().lower()
-
-        worker = Worker.objects.filter(email=email).first()
-        if worker:
-            if not worker.is_active:
-                worker.is_active = True
-                worker.save(update_fields=["is_active"])
-            return worker
-
-        display_name = (req.requested_name or "").strip()
-        if not display_name:
-            display_name = email.split("@")[0] if "@" in email else email
-
-        worker = Worker.objects.create(
-            display_name=display_name,
-            email=email,
-            is_active=True,
-        )
-        return worker
-
-    def save_model(self, request, obj, form, change):
-        previous_status = None
-        if change and obj.pk:
-            previous_status = AccessRequest.objects.filter(pk=obj.pk).values_list("status", flat=True).first()
-
-        obj.email = (obj.email or "").strip().lower()
-
-        is_becoming_approved = (obj.status == AccessRequest.Status.APPROVED) and (previous_status != AccessRequest.Status.APPROVED)
-
-        if is_becoming_approved:
-            if not obj.reviewed_by:
-                obj.reviewed_by = request.user
-            if not obj.reviewed_at:
-                obj.reviewed_at = timezone.now()
-
-        super().save_model(request, obj, form, change)
-
-        if is_becoming_approved:
-            self._ensure_worker_for_request(obj)
-
-    @admin.action(description="Approve selected requests and auto-create Workers")
-    def approve_and_create_worker(self, request, queryset):
-        now = timezone.now()
-        for req in queryset:
-            req.email = (req.email or "").strip().lower()
-            req.status = AccessRequest.Status.APPROVED
-            req.reviewed_by = request.user
-            req.reviewed_at = now
-            req.save()
-            self._ensure_worker_for_request(req)
-        self.message_user(request, f"Approved {queryset.count()} request(s) and ensured Worker records exist.")
-
-
-@admin.register(MagicLinkToken)
-class MagicLinkTokenAdmin(admin.ModelAdmin):
-    list_display = ("user", "expires_at", "used_at", "created_at")
-    list_filter = ("used_at",)
-    search_fields = ("user__email",)
-
 
 @admin.register(ParkingEntry)
 class ParkingEntryAdmin(admin.ModelAdmin):
@@ -220,7 +152,6 @@ class ParkingEntryAdmin(admin.ModelAdmin):
 
     def receipt_link(self, obj):
         if obj.receipt:
-            from django.utils.html import format_html
             return format_html(
                 '<a href="{}" target="_blank" rel="noopener noreferrer">📎 View</a>',
                 obj.receipt.url,
@@ -230,7 +161,6 @@ class ParkingEntryAdmin(admin.ModelAdmin):
 
     def receipt_preview(self, obj):
         if obj.receipt:
-            from django.utils.html import format_html
             url = obj.receipt.url
             name = obj.receipt.name.lower()
             if name.endswith(".pdf"):
@@ -256,3 +186,77 @@ class ParkingEntryAdmin(admin.ModelAdmin):
         ("Status", {"fields": ("status", "reviewed_by", "reviewed_at", "review_notes")}),
         ("Meta", {"fields": ("submitted_by",)}),
     )
+
+admin.site.unregister(User)
+
+@admin.register(User)
+class UserAdmin(BaseUserAdmin):
+    """
+    Extends the default UserAdmin to show pending signups prominently
+    and provide a one-click approve action that also activates the Worker profile.
+    Username field is hidden — email is used as the login identifier.
+    """
+    list_display = ("email", "full_name", "is_active", "is_staff", "account_status", "date_joined")
+    list_filter = ("is_active", "is_staff", "date_joined")
+    search_fields = ("email", "first_name", "last_name")
+    ordering = ("is_active", "-date_joined")  # pending (inactive) shown first
+    actions = ["approve_accounts", "deactivate_accounts"]
+
+    # Remove username from the add/change forms — email is used instead
+    add_fieldsets = (
+        (None, {
+            "classes": ("wide",),
+            "fields": ("email", "first_name", "last_name", "password1", "password2", "is_active", "is_staff"),
+        }),
+    )
+    fieldsets = (
+        (None, {"fields": ("email", "password")}),
+        ("Personal info", {"fields": ("first_name", "last_name")}),
+        ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
+        ("Important dates", {"fields": ("last_login", "date_joined")}),
+    )
+
+    def save_model(self, request, obj, form, change):
+        # Always keep username in sync with email
+        obj.username = obj.email
+        super().save_model(request, obj, form, change)
+
+        # Auto-create or sync Worker profile
+        if obj.email:
+            Worker.objects.get_or_create(
+                email=obj.email,
+                defaults={
+                    "display_name": obj.get_full_name() or obj.email.split("@")[0],
+                    "is_active": obj.is_active,
+                    "user": obj,
+                },
+            )
+
+    def full_name(self, obj):
+        return obj.get_full_name() or "—"
+    full_name.short_description = "Name"
+
+    def account_status(self, obj):
+        from django.utils.safestring import mark_safe
+        if not obj.is_active:
+            return mark_safe('<span style="color: #c0392b; font-weight: bold;">Pending Approval</span>')
+        elif obj.is_staff:
+            return mark_safe('<span style="color: #417690;">Admin</span>')
+        else:
+            return mark_safe('<span style="color: #27ae60;">Active</span>')
+    account_status.short_description = "Status"
+
+    @admin.action(description="Approve selected accounts")
+    def approve_accounts(self, request, queryset):
+        count = 0
+        for user in queryset.filter(is_active=False):
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+            Worker.objects.filter(email=user.email, is_active=False).update(is_active=True)
+            count += 1
+        self.message_user(request, f"Approved {count} account(s). Workers have been activated.")
+
+    @admin.action(description="Deactivate selected accounts")
+    def deactivate_accounts(self, request, queryset):
+        count = queryset.filter(is_active=True).update(is_active=False)
+        self.message_user(request, f"Deactivated {count} account(s).")

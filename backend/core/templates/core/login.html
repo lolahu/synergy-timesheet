@@ -2,14 +2,18 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Request Access — Synergy Timesheet</title>
+    <title>Login — Synergy Timesheet</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {% load static %}
     <link rel="stylesheet" href="{% static 'core/mobile.css' %}" />
   </head>
   <body>
     <div class="page">
-      <h3>Request Access</h3>
+      <h3>Login</h3>
+
+      {% if error %}
+        <div class="alert-error">{{ error }}</div>
+      {% endif %}
 
       <form method="post">
         {% csrf_token %}
@@ -23,34 +27,28 @@
             placeholder="you@example.com"
             inputmode="email"
             autocomplete="email"
+            value="{{ request.POST.email }}"
           />
         </div>
 
         <div class="field">
-          <label>Name <span class="hint">(optional)</span></label>
+          <label>Password</label>
           <input
-            name="name"
-            type="text"
-            placeholder="Your full name"
-            autocomplete="name"
+            name="password"
+            type="password"
+            required
+            autocomplete="current-password"
           />
         </div>
 
-        <div class="field">
-          <label>Phone <span class="hint">(optional)</span></label>
-          <input
-            name="phone"
-            type="tel"
-            placeholder="e.g. 416-555-0123"
-            inputmode="tel"
-            autocomplete="tel"
-          />
-        </div>
-
-        <button type="submit" class="btn btn-primary">Request Access</button>
+        <button type="submit" class="btn btn-primary">Log In</button>
       </form>
 
-      <a href="/" class="back-link">← Back to Home</a>
+      <div class="nav-links">
+        <a href="/password-reset/" class="back-link">Forgot your password?</a>
+        <a href="/signup/" class="back-link">Don't have an account? Sign up</a>
+        <a href="/" class="back-link">← Back to Home</a>
+      </div>
     </div>
   </body>
 </html>
