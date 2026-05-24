@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
+from .permissions import user_is_foreman
+
 # ── Branding ──────────────────────────────────────────────────────────────────
 admin.site.site_header = "Synergy Timesheet Administration"
 admin.site.site_title  = "Synergy Timesheet Admin"
@@ -49,7 +51,7 @@ class UserAdmin(DjangoUserAdmin):
             return "👑 Superuser"
         if obj.is_staff:
             return "🛠 Admin"
-        if obj.groups.filter(name="FOREMAN").exists():
+        if user_is_foreman(obj):
             return "👷‍♂️ Foreman"
         if hasattr(obj, "worker_profile"):
             return "👷 Worker"
