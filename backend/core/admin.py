@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
@@ -74,7 +75,7 @@ class TimeEntryAdmin(admin.ModelAdmin):
         else:
             selected_week = this_monday
 
-        week_end = selected_week + timedelta(days=6)
+        week_end = selected_week + timedelta(days=4)
 
         # All-time entries — SUBMITTED and APPROVED only (excludes OVERWRITTEN and REJECTED)
         all_qs = TimeEntry.objects.select_related("worker", "project").filter(
@@ -91,23 +92,27 @@ class TimeEntryAdmin(admin.ModelAdmin):
         project_map = {}
         for e in all_qs:
             key = (e.worker_id, e.project_id)
-            combo_entries[key].append((e.work_date, float(e.hours)))
+            combo_entries[key].append((e.work_date, e.hours))
             worker_map[e.worker_id] = e.worker
             project_map[e.project_id] = e.project
 
         rows = []
+        total_week_hours = Decimal("0")
+        total_cumulative_hours = Decimal("0")
         for (wid, pid), entries in combo_entries.items():
             # Weekly hours: sum entries that fall within selected week
             weekly_total = sum(
-                h for d, h in entries
-                if selected_week <= d <= week_end
+                (h for d, h in entries if selected_week <= d <= week_end),
+                Decimal("0"),
             )
 
             # Cumulative hours: all entries up to and including week_end
             cumulative = sum(
-                h for d, h in entries
-                if d <= week_end
+                (h for d, h in entries if d <= week_end),
+                Decimal("0"),
             )
+            total_week_hours += weekly_total
+            total_cumulative_hours += cumulative
 
             rows.append({
                 "week_start": selected_week,
@@ -115,8 +120,8 @@ class TimeEntryAdmin(admin.ModelAdmin):
                 "project": project_map.get(pid),
                 "worker_id": wid,
                 "project_id": pid,
-                "total_hours": round(weekly_total, 2) if weekly_total else "—",
-                "cumulative_hours": round(cumulative, 2),
+                "total_hours": weekly_total if weekly_total else "—",
+                "cumulative_hours": cumulative,
             })
 
         # Sort by worker name then project name
@@ -138,6 +143,8 @@ class TimeEntryAdmin(admin.ModelAdmin):
             selected_week_friday=(selected_week + timedelta(days=4)).isoformat(),
             selected_project_id=(project_id or ""),
             selected_worker_id=(worker_id or ""),
+            total_week_hours=total_week_hours,
+            total_cumulative_hours=total_cumulative_hours,
         )
         return render(request, "admin/core/timeentry/weekly_dashboard.html", context)
 

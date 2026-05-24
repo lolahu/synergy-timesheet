@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from .models import Worker, Project, TimeEntry, ParkingEntry
+from .permissions import can_enter_for_others
 
 User = get_user_model()
 
@@ -97,12 +98,6 @@ def signup_view(request):
         "error": error,
         "prev": request.POST,
     })
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def can_enter_for_others(user) -> bool:
-    return user.is_staff or user.groups.filter(name="FOREMAN").exists()
 
 
 # ── Timesheet ─────────────────────────────────────────────────────────────────
