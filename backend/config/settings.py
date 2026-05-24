@@ -5,6 +5,9 @@ Django settings for config project.
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
+
+from .env import database_config, env_bool, env_csv, media_root
 
 load_dotenv()
 
@@ -13,13 +16,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ── Security ──────────────────────────────────────────────────────────────────
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-*f8_q$l)7d6azjrxvuv2pguci(2#rvqf@t0&_r3unby0%0k*o7')
+DEFAULT_SECRET_KEY = 'django-insecure-*f8_q$l)7d6azjrxvuv2pguci(2#rvqf@t0&_r3unby0%0k*o7'
+SECRET_KEY = os.environ.get('SECRET_KEY', DEFAULT_SECRET_KEY)
 
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+DEBUG = env_bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
+if not DEBUG and SECRET_KEY == DEFAULT_SECRET_KEY:
+    raise ImproperlyConfigured('SECRET_KEY must be set when DEBUG=False.')
 
-CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if os.environ.get('CSRF_TRUSTED_ORIGINS') else []
+ALLOWED_HOSTS = env_csv('ALLOWED_HOSTS', default='127.0.0.1,localhost')
+
+CSRF_TRUSTED_ORIGINS = env_csv('CSRF_TRUSTED_ORIGINS')
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', default=not DEBUG)
+SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', default=not DEBUG)
+CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', default=not DEBUG)
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False)
+SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', default=False)
 
 
 # ── Application ───────────────────────────────────────────────────────────────
@@ -66,27 +81,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
-# Uses PostgreSQL in production (when DB_* env vars are set),
+# Uses PostgreSQL in production (when DATABASE_URL or DB_* env vars are set),
 # falls back to SQLite for local development.
 
-if os.environ.get('DB_NAME'):
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('DB_NAME'),
-            'USER': os.environ.get('DB_USER'),
-            'PASSWORD': os.environ.get('DB_PASSWORD'),
-            'HOST': os.environ.get('DB_HOST'),
-            'PORT': os.environ.get('DB_PORT', '5432'),
-        }
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+DATABASES = database_config(BASE_DIR)
 
 
 # ── Password validation ───────────────────────────────────────────────────────
@@ -117,7 +115,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # ── Media files (user uploads e.g. parking receipts) ─────────────────────────
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = media_root(BASE_DIR)
 
 # Max upload size: 10MB (phones can produce large photos)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB

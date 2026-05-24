@@ -1,1 +1,1 @@
-web: gunicorn config.wsgi:application
+web: cd backend && ./bin/railway-start.sh
