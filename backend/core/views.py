@@ -15,7 +15,9 @@ User = get_user_model()
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def home(request):
-    return render(request, "core/home.html")
+    return render(request, "core/home.html", {
+        "can_enter_timesheets": can_enter_for_others(request.user),
+    })
 
 
 def login_view(request):
@@ -109,7 +111,7 @@ def timesheet_weekly(request):
 
     today = date.today()
     is_monday = today.weekday() == 0
-    is_admin = request.user.is_superuser
+    is_admin = request.user.is_staff
     this_monday = today - timedelta(days=today.weekday())
     last_monday = this_monday - timedelta(weeks=1)
 

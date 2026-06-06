@@ -35,10 +35,11 @@ class ForemanPermissionTests(TestCase):
 
 class WeeklyDashboardTests(TestCase):
     def setUp(self):
-        self.admin_user = User.objects.create_superuser(
+        self.admin_user = User.objects.create_user(
             username="admin@example.com",
             email="admin@example.com",
             password="pass",
+            is_staff=True,
         )
         self.worker = Worker.objects.create(
             display_name="A Worker",

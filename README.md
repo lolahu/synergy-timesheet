@@ -38,10 +38,11 @@ requirements.txt      Python dependencies
 
 ## Roles And Access
 
-Timesheet entry is restricted to users who are either:
+The app uses three business roles:
 
-- staff/admin users, meaning `User.is_staff = True`
-- members of the configured Foreman group
+- Admin: `User.is_staff = True`, not in the Foreman group. Admins can access `/admin/`, enter timesheets, and upload parking receipts.
+- Foreman: `User.is_staff = False`, in the Foreman group. Foremen can enter timesheets and upload parking receipts, but cannot access `/admin/`.
+- Regular employee: `User.is_staff = False`, not in the Foreman group. Regular employees can upload parking receipts.
 
 The Foreman group name is configured with:
 
@@ -51,7 +52,7 @@ FOREMAN_GROUP_NAME=Foreman
 
 The app checks this group case-insensitively, so `FOREMAN`, `Foreman`, and `foreman` all match.
 
-The Django Admin group permission checkboxes are available, but the custom timesheet page currently uses simple staff-or-Foreman group membership rather than granular `user.has_perm(...)` checks.
+`is_superuser` is not used for app roles. Keep it off for normal accounts.
 
 ## Local Setup
 
@@ -73,7 +74,7 @@ python manage.py migrate
 Create an admin user:
 
 ```bash
-python manage.py createsuperuser
+python manage.py shell -c "from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.create_user(username='admin@example.com', email='admin@example.com', password='change-me', is_staff=True)"
 ```
 
 Start the local server:
