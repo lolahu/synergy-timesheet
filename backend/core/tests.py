@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+from django.contrib import admin as django_admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import TestCase, override_settings
@@ -8,9 +9,110 @@ from django.urls import reverse
 
 from .models import Project, TimeEntry, Worker
 from .permissions import can_enter_for_others, user_is_foreman
+from .admin import EmailUserCreationForm, EmailUserChangeForm, UserAdmin as SynergyUserAdmin
 
 
 User = get_user_model()
+
+
+class EmailLoginIdentityTests(TestCase):
+    def test_signup_sets_username_to_email(self):
+        response = self.client.post(
+            reverse("signup"),
+            {
+                "email": "NewUser@Example.com",
+                "name": "New User",
+                "phone": "555-0100",
+                "password1": "strong-pass-123",
+                "password2": "strong-pass-123",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user = User.objects.get(email="newuser@example.com")
+        self.assertEqual(user.username, "newuser@example.com")
+
+    def test_signup_rejects_duplicate_email_case_insensitively(self):
+        User.objects.create_user(
+            username="person@example.com",
+            email="person@example.com",
+            password="pass",
+        )
+
+        response = self.client.post(
+            reverse("signup"),
+            {
+                "email": "PERSON@example.com",
+                "name": "Person",
+                "password1": "strong-pass-123",
+                "password2": "strong-pass-123",
+            },
+        )
+
+        self.assertContains(response, "An account with this email already exists.")
+
+    def test_admin_creation_form_hides_username_and_mirrors_email(self):
+        form = EmailUserCreationForm(data={
+            "email": "Admin@Example.com",
+            "password1": "strong-pass-123",
+            "password2": "strong-pass-123",
+            "is_active": "on",
+            "is_staff": "on",
+        })
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertNotIn("username", form.fields)
+
+        user = form.save()
+        self.assertEqual(user.email, "admin@example.com")
+        self.assertEqual(user.username, "admin@example.com")
+        self.assertTrue(user.is_staff)
+        self.assertFalse(user.is_superuser)
+
+    def test_admin_change_form_rejects_duplicate_email_case_insensitively(self):
+        existing = User.objects.create_user(
+            username="existing@example.com",
+            email="existing@example.com",
+            password="pass",
+        )
+        user = User.objects.create_user(
+            username="user@example.com",
+            email="user@example.com",
+            password="pass",
+        )
+
+        form = EmailUserChangeForm(data={
+            "email": "EXISTING@example.com",
+            "password": user.password,
+            "first_name": "",
+            "last_name": "",
+            "is_active": "on",
+        }, instance=user)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("email", form.errors)
+        self.assertEqual(existing.email, "existing@example.com")
+
+    def test_admin_save_keeps_username_and_worker_email_in_sync(self):
+        user = User.objects.create_user(
+            username="old@example.com",
+            email="old@example.com",
+            password="pass",
+        )
+        worker = Worker.objects.create(
+            user=user,
+            display_name="Worker Name",
+            email="old@example.com",
+        )
+
+        user.email = "NEW@Example.com"
+        SynergyUserAdmin(User, django_admin.site).save_model(None, user, None, True)
+
+        user.refresh_from_db()
+        worker.refresh_from_db()
+        self.assertEqual(user.email, "new@example.com")
+        self.assertEqual(user.username, "new@example.com")
+        self.assertEqual(worker.email, "new@example.com")
 
 
 class ForemanPermissionTests(TestCase):

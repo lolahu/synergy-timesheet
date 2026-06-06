@@ -38,6 +38,8 @@ requirements.txt      Python dependencies
 
 ## Roles And Access
 
+Email is the login identity. The app keeps Django's built-in `username` field behind the scenes, but always mirrors it to the user's email address.
+
 The app uses three business roles:
 
 - Admin: `User.is_staff = True`, not in the Foreman group. Admins can access `/admin/`, enter timesheets, and upload parking receipts.

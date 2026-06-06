@@ -1,8 +1,7 @@
 from django.contrib.auth import get_user_model, login, logout, authenticate
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import PasswordResetForm
+from django.db.models import Q
 from django.shortcuts import redirect, render
-from django.db import IntegrityError
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -70,7 +69,7 @@ def signup_view(request):
             error = "Password must be at least 8 characters."
         elif password1 != password2:
             error = "Passwords do not match."
-        elif User.objects.filter(username=email).exists():
+        elif User.objects.filter(Q(username__iexact=email) | Q(email__iexact=email)).exists():
             error = "An account with this email already exists."
         else:
             # Create user as inactive — admin must approve before they can log in

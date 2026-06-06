@@ -2,10 +2,13 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django import forms
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.forms import AdminUserCreationForm, UserChangeForm
 from django.contrib.auth.models import Group
+from django.db.models import Q
 from django.shortcuts import render
 from django.urls import path
 from django.utils import timezone
@@ -16,6 +19,57 @@ from .models import ParkingEntry, Project, TimeEntry, Worker
 from .permissions import foreman_group_name, user_is_foreman
 
 User = get_user_model()
+
+
+class EmailUserCreationForm(AdminUserCreationForm):
+    email = forms.EmailField(label="Email")
+    username = None
+
+    class Meta(AdminUserCreationForm.Meta):
+        model = User
+        fields = ("email", "first_name", "last_name", "is_active", "is_staff", "groups")
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        if User.objects.filter(Q(username__iexact=email) | Q(email__iexact=email)).exists():
+            raise forms.ValidationError("An account with this email already exists.")
+        return email
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.email = self.cleaned_data["email"]
+        user.username = user.email
+        user.is_superuser = False
+        if commit:
+            user.save()
+            self.save_m2m()
+        return user
+
+
+class EmailUserChangeForm(UserChangeForm):
+    email = forms.EmailField(label="Email")
+    username = None
+
+    class Meta(UserChangeForm.Meta):
+        model = User
+        fields = (
+            "email",
+            "password",
+            "first_name",
+            "last_name",
+            "is_active",
+            "is_staff",
+            "groups",
+            "last_login",
+            "date_joined",
+        )
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        duplicate = User.objects.filter(Q(username__iexact=email) | Q(email__iexact=email)).exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise forms.ValidationError("An account with this email already exists.")
+        return email
 
 
 def to_monday(d: date) -> date:
@@ -230,6 +284,8 @@ class UserAdmin(StaffAdminAccessMixin, BaseUserAdmin):
     search_fields = ("email", "first_name", "last_name")
     ordering = ("is_active", "-date_joined")  # pending (inactive) shown first
     actions = ["approve_accounts", "deactivate_accounts"]
+    form = EmailUserChangeForm
+    add_form = EmailUserCreationForm
 
     # Remove username from the add/change forms — email is used instead
     add_fieldsets = (
@@ -247,20 +303,28 @@ class UserAdmin(StaffAdminAccessMixin, BaseUserAdmin):
 
     def save_model(self, request, obj, form, change):
         # Always keep username in sync with email
+        obj.email = obj.email.strip().lower()
         obj.username = obj.email
         obj.is_superuser = False
         super().save_model(request, obj, form, change)
 
-        # Auto-create or sync Worker profile
         if obj.email:
-            Worker.objects.get_or_create(
-                email=obj.email,
-                defaults={
-                    "display_name": obj.get_full_name() or obj.email.split("@")[0],
-                    "is_active": obj.is_active,
-                    "user": obj,
-                },
-            )
+            display_name = obj.get_full_name() or obj.email.split("@")[0]
+            worker = getattr(obj, "worker_profile", None)
+            if worker:
+                worker.email = obj.email
+                worker.display_name = worker.display_name or display_name
+                worker.is_active = obj.is_active
+                worker.save(update_fields=["email", "display_name", "is_active", "updated_at"])
+            else:
+                Worker.objects.get_or_create(
+                    email=obj.email,
+                    defaults={
+                        "display_name": display_name,
+                        "is_active": obj.is_active,
+                        "user": obj,
+                    },
+                )
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
