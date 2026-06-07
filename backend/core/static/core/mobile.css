@@ -32,6 +32,17 @@ h2, h3 {
   font-weight: 700;
 }
 
+.site-logo-heading {
+  margin: 0 0 24px;
+  line-height: 1;
+}
+
+.site-logo {
+  display: block;
+  width: min(280px, 100%);
+  height: auto;
+}
+
 /* ── Form elements ────────────────────────────────────────────────────────── */
 
 .field {

@@ -9,7 +9,13 @@
   </head>
   <body>
     <div class="page">
-      <h2>Synergy Timesheet</h2>
+      <h1 class="site-logo-heading">
+        <img
+          src="{% static 'core/img/synergy_logo.png' %}"
+          alt="Synergy Carpentry"
+          class="site-logo"
+        />
+      </h1>
 
       {% if user.is_authenticated %}
         <p class="text-muted">Logged in as <b>{{ user.email|default:user.username }}</b></p>
