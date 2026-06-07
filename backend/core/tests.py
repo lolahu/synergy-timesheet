@@ -309,6 +309,10 @@ class ParkingEntryAdminReceiptTests(TestCase):
         expected_url = reverse("admin:core_parkingentry_receipt", args=[entry.pk])
         expected_download_url = reverse("admin:core_parkingentry_receipt_download", args=[entry.pk])
         self.assertContains(response, expected_url)
+        self.assertContains(
+            response,
+            f'<a href="{expected_url}" target="_blank" rel="noopener noreferrer">',
+        )
         self.assertContains(response, expected_download_url)
         self.assertContains(response, "Download")
         self.assertNotContains(response, "/media/parking_receipts/")
