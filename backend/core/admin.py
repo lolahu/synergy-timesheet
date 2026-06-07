@@ -4,13 +4,16 @@ from decimal import Decimal
 
 from django import forms
 from django.contrib import admin
+from django.contrib.admin.sites import NotRegistered
 from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import AdminUserCreationForm, UserChangeForm
 from django.contrib.auth.models import Group
 from django.db.models import Q
-from django.shortcuts import render
-from django.urls import path
+from django.http import FileResponse, Http404
+from django.shortcuts import get_object_or_404, render
+from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
@@ -94,6 +97,17 @@ class StaffAdminAccessMixin:
 
     def has_delete_permission(self, request, obj=None):
         return self._is_staff_admin(request)
+
+
+try:
+    admin.site.unregister(Group)
+except NotRegistered:
+    pass
+
+
+@admin.register(Group)
+class GroupAdmin(StaffAdminAccessMixin, BaseGroupAdmin):
+    pass
 
 
 @admin.register(Worker)
@@ -233,18 +247,48 @@ class ParkingEntryAdmin(StaffAdminAccessMixin, admin.ModelAdmin):
     search_fields = ("worker__display_name", "project__name")
     readonly_fields = ("receipt_preview",)
 
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<int:object_id>/receipt/",
+                self.admin_site.admin_view(self.receipt_view),
+                name="core_parkingentry_receipt",
+            ),
+        ]
+        return custom + urls
+
+    def receipt_admin_url(self, obj):
+        return reverse("admin:core_parkingentry_receipt", args=[obj.pk])
+
+    def receipt_view(self, request, object_id):
+        entry = get_object_or_404(self.get_queryset(request), pk=object_id)
+        if not entry.receipt:
+            raise Http404("No receipt uploaded.")
+
+        try:
+            receipt_file = entry.receipt.open("rb")
+        except FileNotFoundError as exc:
+            raise Http404("Receipt file not found.") from exc
+
+        return FileResponse(
+            receipt_file,
+            as_attachment=False,
+            filename=entry.receipt.name,
+        )
+
     def receipt_link(self, obj):
         if obj.receipt:
             return format_html(
                 '<a href="{}" target="_blank" rel="noopener noreferrer">📎 View</a>',
-                obj.receipt.url,
+                self.receipt_admin_url(obj),
             )
         return "—"
     receipt_link.short_description = "Receipt"
 
     def receipt_preview(self, obj):
         if obj.receipt:
-            url = obj.receipt.url
+            url = self.receipt_admin_url(obj)
             name = obj.receipt.name.lower()
             if name.endswith(".pdf"):
                 return format_html(

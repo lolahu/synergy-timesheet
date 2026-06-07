@@ -1,13 +1,16 @@
 from datetime import date
 from decimal import Decimal
+import shutil
+import tempfile
 
 from django.contrib import admin as django_admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .models import Project, TimeEntry, Worker
+from .models import ParkingEntry, Project, TimeEntry, Worker
 from .permissions import can_enter_for_others, user_is_foreman
 from .admin import EmailUserCreationForm, EmailUserChangeForm, UserAdmin as SynergyUserAdmin
 
@@ -135,6 +138,32 @@ class ForemanPermissionTests(TestCase):
         self.assertTrue(can_enter_for_others(user))
 
 
+class GroupAdminAccessTests(TestCase):
+    def test_staff_admin_can_create_foreman_group_without_superuser(self):
+        admin_user = User.objects.create_user(
+            username="admin@example.com",
+            email="admin@example.com",
+            password="pass",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("admin:auth_group_add"),
+            {
+                "name": "Foreman",
+                "permissions": [],
+                "_save": "Save",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Group.objects.filter(name="Foreman").exists())
+        admin_user.refresh_from_db()
+        self.assertFalse(admin_user.is_superuser)
+
+
 class WeeklyDashboardTests(TestCase):
     def setUp(self):
         self.admin_user = User.objects.create_user(
@@ -196,3 +225,65 @@ class WeeklyDashboardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["total_week_hours"], Decimal("3.30"))
         self.assertEqual(response.context["total_cumulative_hours"], Decimal("8.30"))
+
+
+class ParkingEntryAdminReceiptTests(TestCase):
+    def setUp(self):
+        self.media_dir = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media_dir)
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+        self.addCleanup(shutil.rmtree, self.media_dir)
+
+        self.admin_user = User.objects.create_user(
+            username="admin@example.com",
+            email="admin@example.com",
+            password="pass",
+            is_staff=True,
+        )
+        self.worker = Worker.objects.create(
+            display_name="A Worker",
+            email="worker@example.com",
+        )
+        self.project = Project.objects.create(name="A Project")
+
+    def test_admin_receipt_route_streams_uploaded_file(self):
+        entry = ParkingEntry.objects.create(
+            worker=self.worker,
+            project=self.project,
+            work_date=date(2026, 6, 6),
+            amount=Decimal("12.50"),
+            submitted_by=self.admin_user,
+            receipt=SimpleUploadedFile(
+                "receipt.jpeg",
+                b"receipt-bytes",
+                content_type="image/jpeg",
+            ),
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("admin:core_parkingentry_receipt", args=[entry.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"receipt-bytes")
+
+    def test_admin_receipt_link_uses_protected_admin_route(self):
+        entry = ParkingEntry.objects.create(
+            worker=self.worker,
+            project=self.project,
+            work_date=date(2026, 6, 6),
+            amount=Decimal("12.50"),
+            submitted_by=self.admin_user,
+            receipt=SimpleUploadedFile(
+                "receipt.jpeg",
+                b"receipt-bytes",
+                content_type="image/jpeg",
+            ),
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("admin:core_parkingentry_changelist"))
+
+        expected_url = reverse("admin:core_parkingentry_receipt", args=[entry.pk])
+        self.assertContains(response, expected_url)
+        self.assertNotContains(response, "/media/parking_receipts/")
