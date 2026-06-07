@@ -78,6 +78,7 @@ class TimeEntry(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name_plural = "Time entries"
         indexes = [
             models.Index(fields=["work_date"]),
             models.Index(fields=["status", "work_date"]),
@@ -127,6 +128,7 @@ class ParkingEntry(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name_plural = "Parking entries"
         indexes = [
             models.Index(fields=["work_date"]),
             models.Index(fields=["status", "work_date"]),

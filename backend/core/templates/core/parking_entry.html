@@ -9,6 +9,14 @@
   </head>
   <body>
     <div class="page">
+      <h1 class="site-logo-heading">
+        <img
+          src="{% static 'core/img/synergy_logo.png' %}"
+          alt="Synergy Carpentry"
+          class="site-logo"
+        />
+      </h1>
+
       <h3>Parking Submission</h3>
 
       {% if error %}
@@ -20,17 +28,11 @@
 
         <div class="field">
           <label>Worker</label>
-          <select name="worker_id" required>
-            <option value="">-- Select --</option>
-            {% for w in workers %}
-              <option value="{{ w.id }}"
-                {% if prev.worker_id == w.id|stringformat:"s" %}selected
-                {% elif not prev and own_worker and own_worker.id == w.id %}selected
-                {% endif %}>
-                {{ w.display_name }}
-              </option>
-            {% endfor %}
-          </select>
+          {% if own_worker and own_worker.is_active %}
+            <input type="text" value="{{ own_worker.display_name }}" readonly />
+          {% else %}
+            <input type="text" value="No active worker profile linked" readonly />
+          {% endif %}
         </div>
 
         <div class="field">
@@ -99,7 +101,7 @@
           />
         </div>
 
-        <button type="submit" class="btn btn-primary">Submit Parking</button>
+        <button type="submit" class="btn btn-primary"{% if not own_worker or not own_worker.is_active %} disabled{% endif %}>Submit Parking</button>
       </form>
 
       <a href="/" class="back-link">← Home</a>

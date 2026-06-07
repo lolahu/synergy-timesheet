@@ -35,6 +35,8 @@ class AdminReceiptFileValue:
 
 
 class AdminReceiptFileWidget(AdminFileWidget):
+    template_name = "admin/widgets/receipt_clearable_file_input.html"
+
     def __init__(self, *args, receipt_url=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.receipt_url = receipt_url
