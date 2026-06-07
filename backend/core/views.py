@@ -1,8 +1,7 @@
 from django.contrib.auth import get_user_model, login, logout, authenticate
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import PasswordResetForm
+from django.db.models import Q
 from django.shortcuts import redirect, render
-from django.db import IntegrityError
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -15,7 +14,9 @@ User = get_user_model()
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def home(request):
-    return render(request, "core/home.html")
+    return render(request, "core/home.html", {
+        "can_enter_timesheets": can_enter_for_others(request.user),
+    })
 
 
 def login_view(request):
@@ -68,7 +69,7 @@ def signup_view(request):
             error = "Password must be at least 8 characters."
         elif password1 != password2:
             error = "Passwords do not match."
-        elif User.objects.filter(username=email).exists():
+        elif User.objects.filter(Q(username__iexact=email) | Q(email__iexact=email)).exists():
             error = "An account with this email already exists."
         else:
             # Create user as inactive — admin must approve before they can log in
@@ -109,7 +110,7 @@ def timesheet_weekly(request):
 
     today = date.today()
     is_monday = today.weekday() == 0
-    is_admin = request.user.is_superuser
+    is_admin = request.user.is_staff
     this_monday = today - timedelta(days=today.weekday())
     last_monday = this_monday - timedelta(weeks=1)
 

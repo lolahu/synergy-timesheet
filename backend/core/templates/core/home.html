@@ -15,9 +15,11 @@
         <p class="text-muted">Logged in as <b>{{ user.email|default:user.username }}</b></p>
 
         <div class="home-menu">
-          <a href="/timesheet/" class="menu-item">
-            <span class="icon">🕐</span> Timesheet
-          </a>
+          {% if can_enter_timesheets %}
+            <a href="/timesheet/" class="menu-item">
+              <span class="icon">🕐</span> Timesheet
+            </a>
+          {% endif %}
           <a href="/parking/" class="menu-item">
             <span class="icon">🅿️</span> Parking
           </a>
