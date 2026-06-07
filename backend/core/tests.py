@@ -287,3 +287,24 @@ class ParkingEntryAdminReceiptTests(TestCase):
         expected_url = reverse("admin:core_parkingentry_receipt", args=[entry.pk])
         self.assertContains(response, expected_url)
         self.assertNotContains(response, "/media/parking_receipts/")
+
+    def test_admin_change_form_receipt_widget_uses_protected_admin_route(self):
+        entry = ParkingEntry.objects.create(
+            worker=self.worker,
+            project=self.project,
+            work_date=date(2026, 6, 6),
+            amount=Decimal("12.50"),
+            submitted_by=self.admin_user,
+            receipt=SimpleUploadedFile(
+                "receipt.jpeg",
+                b"receipt-bytes",
+                content_type="image/jpeg",
+            ),
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("admin:core_parkingentry_change", args=[entry.pk]))
+
+        expected_url = reverse("admin:core_parkingentry_receipt", args=[entry.pk])
+        self.assertContains(response, expected_url)
+        self.assertNotContains(response, "/media/parking_receipts/")

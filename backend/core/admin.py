@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from django import forms
 from django.contrib import admin
+from django.contrib.admin.widgets import AdminFileWidget
 from django.contrib.admin.sites import NotRegistered
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
@@ -22,6 +23,30 @@ from .models import ParkingEntry, Project, TimeEntry, Worker
 from .permissions import foreman_group_name, user_is_foreman
 
 User = get_user_model()
+
+
+class AdminReceiptFileValue:
+    def __init__(self, value, url):
+        self.value = value
+        self.url = url
+
+    def __str__(self):
+        return str(self.value)
+
+
+class AdminReceiptFileWidget(AdminFileWidget):
+    def __init__(self, *args, receipt_url=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.receipt_url = receipt_url
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        if self.receipt_url and context["widget"]["is_initial"]:
+            context["widget"]["value"] = AdminReceiptFileValue(
+                context["widget"]["value"],
+                self.receipt_url,
+            )
+        return context
 
 
 class EmailUserCreationForm(AdminUserCreationForm):
@@ -260,6 +285,19 @@ class ParkingEntryAdmin(StaffAdminAccessMixin, admin.ModelAdmin):
 
     def receipt_admin_url(self, obj):
         return reverse("admin:core_parkingentry_receipt", args=[obj.pk])
+
+    def receipt_admin_url_for_id(self, object_id):
+        return reverse("admin:core_parkingentry_receipt", args=[object_id])
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if db_field.name == "receipt" and formfield:
+            object_id = request.resolver_match.kwargs.get("object_id")
+            if object_id:
+                formfield.widget = AdminReceiptFileWidget(
+                    receipt_url=self.receipt_admin_url_for_id(object_id),
+                )
+        return formfield
 
     def receipt_view(self, request, object_id):
         entry = get_object_or_404(self.get_queryset(request), pk=object_id)
