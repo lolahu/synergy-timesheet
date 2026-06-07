@@ -268,19 +268,16 @@ def timesheet_success(request):
 @login_required
 def parking_entry(request):
     projects = Project.objects.filter(is_active=True).order_by("name")
-    workers = Worker.objects.filter(is_active=True).order_by("display_name")
     today = date.today().isoformat()
     own_worker = getattr(request.user, "worker_profile", None)
 
     context = {
         "projects": projects,
-        "workers": workers,
         "today": today,
         "own_worker": own_worker,
     }
 
     if request.method == "POST":
-        worker_id = request.POST.get("worker_id", "").strip()
         project_id = request.POST.get("project_id", "").strip()
         work_date = request.POST.get("work_date", "").strip()
         amount_raw = request.POST.get("amount", "").strip()
@@ -288,15 +285,11 @@ def parking_entry(request):
         receipt_file = request.FILES.get("receipt")
 
         error = None
-        worker = None
+        worker = own_worker if own_worker and own_worker.is_active else None
         project = None
 
-        if not worker_id:
-            error = "Please select a worker."
-        else:
-            worker = Worker.objects.filter(id=worker_id, is_active=True).first()
-            if not worker:
-                error = "Invalid worker selected."
+        if not worker:
+            error = "Your account is not linked to an active worker profile."
 
         if not project_id:
             error = error or "Please select a project."
@@ -332,7 +325,6 @@ def parking_entry(request):
         if error:
             context["error"] = error
             context["prev"] = {
-                "worker_id": worker_id,
                 "project_id": project_id,
                 "work_date": work_date,
                 "amount": amount_raw,

@@ -227,6 +227,118 @@ class WeeklyDashboardTests(TestCase):
         self.assertEqual(response.context["total_cumulative_hours"], Decimal("8.30"))
 
 
+class ParkingEntryWorkerRestrictionTests(TestCase):
+    def setUp(self):
+        self.project = Project.objects.create(name="A Project")
+        self.other_worker = Worker.objects.create(
+            display_name="Other Worker",
+            email="other@example.com",
+        )
+
+    def submit_parking(self, user, posted_worker):
+        self.client.force_login(user)
+        return self.client.post(
+            reverse("parking_entry"),
+            {
+                "worker_id": str(posted_worker.pk),
+                "project_id": str(self.project.pk),
+                "work_date": "2026-06-06",
+                "amount": "12.50",
+                "notes": "downtown lot",
+            },
+        )
+
+    def test_parking_form_only_shows_logged_in_worker(self):
+        user = User.objects.create_user(
+            username="worker@example.com",
+            email="worker@example.com",
+            password="pass",
+        )
+        Worker.objects.create(
+            user=user,
+            display_name="Own Worker",
+            email="worker@example.com",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("parking_entry"))
+
+        self.assertContains(response, "Own Worker")
+        self.assertNotContains(response, "Other Worker")
+        self.assertNotContains(response, 'name="worker_id"')
+
+    def test_parking_submission_uses_logged_in_worker_even_if_post_uses_another_worker(self):
+        user = User.objects.create_user(
+            username="worker@example.com",
+            email="worker@example.com",
+            password="pass",
+        )
+        own_worker = Worker.objects.create(
+            user=user,
+            display_name="Own Worker",
+            email="worker@example.com",
+        )
+
+        response = self.submit_parking(user, self.other_worker)
+
+        self.assertEqual(response.status_code, 302)
+        entry = ParkingEntry.objects.get()
+        self.assertEqual(entry.worker, own_worker)
+
+    def test_staff_parking_submission_still_uses_logged_in_worker(self):
+        user = User.objects.create_user(
+            username="admin@example.com",
+            email="admin@example.com",
+            password="pass",
+            is_staff=True,
+        )
+        own_worker = Worker.objects.create(
+            user=user,
+            display_name="Admin Worker",
+            email="admin-worker@example.com",
+        )
+
+        response = self.submit_parking(user, self.other_worker)
+
+        self.assertEqual(response.status_code, 302)
+        entry = ParkingEntry.objects.get()
+        self.assertEqual(entry.worker, own_worker)
+
+    @override_settings(FOREMAN_GROUP_NAME="Foreman")
+    def test_foreman_parking_submission_still_uses_logged_in_worker(self):
+        user = User.objects.create_user(
+            username="foreman@example.com",
+            email="foreman@example.com",
+            password="pass",
+        )
+        group = Group.objects.create(name="Foreman")
+        user.groups.add(group)
+        own_worker = Worker.objects.create(
+            user=user,
+            display_name="Foreman Worker",
+            email="foreman-worker@example.com",
+        )
+
+        response = self.submit_parking(user, self.other_worker)
+
+        self.assertEqual(response.status_code, 302)
+        entry = ParkingEntry.objects.get()
+        self.assertEqual(entry.worker, own_worker)
+
+    def test_parking_submission_requires_active_worker_profile(self):
+        user = User.objects.create_user(
+            username="unlinked@example.com",
+            email="unlinked@example.com",
+            password="pass",
+        )
+
+        response = self.submit_parking(user, self.other_worker)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Your account is not linked to an active worker profile.")
+        self.assertFalse(ParkingEntry.objects.exists())
+
+
 class ParkingEntryAdminReceiptTests(TestCase):
     def setUp(self):
         self.media_dir = tempfile.mkdtemp()
