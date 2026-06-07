@@ -267,6 +267,28 @@ class ParkingEntryAdminReceiptTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(b"".join(response.streaming_content), b"receipt-bytes")
 
+    def test_admin_receipt_download_route_sends_attachment(self):
+        entry = ParkingEntry.objects.create(
+            worker=self.worker,
+            project=self.project,
+            work_date=date(2026, 6, 6),
+            amount=Decimal("12.50"),
+            submitted_by=self.admin_user,
+            receipt=SimpleUploadedFile(
+                "receipt.jpeg",
+                b"receipt-bytes",
+                content_type="image/jpeg",
+            ),
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("admin:core_parkingentry_receipt_download", args=[entry.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"receipt-bytes")
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn("receipt.jpeg", response["Content-Disposition"])
+
     def test_admin_receipt_link_uses_protected_admin_route(self):
         entry = ParkingEntry.objects.create(
             worker=self.worker,
@@ -285,7 +307,10 @@ class ParkingEntryAdminReceiptTests(TestCase):
         response = self.client.get(reverse("admin:core_parkingentry_changelist"))
 
         expected_url = reverse("admin:core_parkingentry_receipt", args=[entry.pk])
+        expected_download_url = reverse("admin:core_parkingentry_receipt_download", args=[entry.pk])
         self.assertContains(response, expected_url)
+        self.assertContains(response, expected_download_url)
+        self.assertContains(response, "Download")
         self.assertNotContains(response, "/media/parking_receipts/")
 
     def test_admin_change_form_receipt_widget_uses_protected_admin_route(self):
@@ -306,5 +331,8 @@ class ParkingEntryAdminReceiptTests(TestCase):
         response = self.client.get(reverse("admin:core_parkingentry_change", args=[entry.pk]))
 
         expected_url = reverse("admin:core_parkingentry_receipt", args=[entry.pk])
+        expected_download_url = reverse("admin:core_parkingentry_receipt_download", args=[entry.pk])
         self.assertContains(response, expected_url)
+        self.assertContains(response, expected_download_url)
+        self.assertContains(response, "Download")
         self.assertNotContains(response, "/media/parking_receipts/")

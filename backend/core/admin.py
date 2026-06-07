@@ -280,11 +280,19 @@ class ParkingEntryAdmin(StaffAdminAccessMixin, admin.ModelAdmin):
                 self.admin_site.admin_view(self.receipt_view),
                 name="core_parkingentry_receipt",
             ),
+            path(
+                "<int:object_id>/receipt/download/",
+                self.admin_site.admin_view(self.receipt_download_view),
+                name="core_parkingentry_receipt_download",
+            ),
         ]
         return custom + urls
 
     def receipt_admin_url(self, obj):
         return reverse("admin:core_parkingentry_receipt", args=[obj.pk])
+
+    def receipt_admin_download_url(self, obj):
+        return reverse("admin:core_parkingentry_receipt_download", args=[obj.pk])
 
     def receipt_admin_url_for_id(self, object_id):
         return reverse("admin:core_parkingentry_receipt", args=[object_id])
@@ -300,6 +308,12 @@ class ParkingEntryAdmin(StaffAdminAccessMixin, admin.ModelAdmin):
         return formfield
 
     def receipt_view(self, request, object_id):
+        return self.receipt_response(request, object_id, as_attachment=False)
+
+    def receipt_download_view(self, request, object_id):
+        return self.receipt_response(request, object_id, as_attachment=True)
+
+    def receipt_response(self, request, object_id, as_attachment):
         entry = get_object_or_404(self.get_queryset(request), pk=object_id)
         if not entry.receipt:
             raise Http404("No receipt uploaded.")
@@ -311,15 +325,17 @@ class ParkingEntryAdmin(StaffAdminAccessMixin, admin.ModelAdmin):
 
         return FileResponse(
             receipt_file,
-            as_attachment=False,
-            filename=entry.receipt.name,
+            as_attachment=as_attachment,
+            filename=entry.receipt.name.rsplit("/", 1)[-1],
         )
 
     def receipt_link(self, obj):
         if obj.receipt:
             return format_html(
-                '<a href="{}" target="_blank" rel="noopener noreferrer">📎 View</a>',
+                '<a href="{}" target="_blank" rel="noopener noreferrer">📎 View</a>'
+                ' | <a href="{}">Download</a>',
                 self.receipt_admin_url(obj),
+                self.receipt_admin_download_url(obj),
             )
         return "—"
     receipt_link.short_description = "Receipt"
@@ -327,20 +343,21 @@ class ParkingEntryAdmin(StaffAdminAccessMixin, admin.ModelAdmin):
     def receipt_preview(self, obj):
         if obj.receipt:
             url = self.receipt_admin_url(obj)
+            download_url = self.receipt_admin_download_url(obj)
             name = obj.receipt.name.lower()
             if name.endswith(".pdf"):
                 return format_html(
                     '<a href="{}" target="_blank" rel="noopener noreferrer">'
-                    '📄 Open PDF in new tab</a>',
-                    url,
+                    '📄 Open PDF in new tab</a> | <a href="{}">Download</a>',
+                    url, download_url,
                 )
             else:
                 return format_html(
                     '<a href="{}" target="_blank" rel="noopener noreferrer">'
                     '<img src="{}" style="max-width: 400px; max-height: 400px; '
                     'border: 1px solid #ccc; border-radius: 4px;" />'
-                    '</a>',
-                    url, url,
+                    '</a><br><a href="{}">Download</a>',
+                    url, url, download_url,
                 )
         return "No receipt uploaded."
     receipt_preview.short_description = "Receipt Preview"
