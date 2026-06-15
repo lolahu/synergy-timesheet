@@ -9,6 +9,7 @@ from .models import Worker, Project, TimeEntry, ParkingEntry
 from .permissions import can_enter_for_others
 
 User = get_user_model()
+WORKDAYS_PER_WEEK = 5
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ def timesheet_weekly(request):
         week_start = this_monday
 
     week_friday = week_start + timedelta(days=4)
-    days = [week_start + timedelta(days=i) for i in range(7)]
+    days = [week_start + timedelta(days=i) for i in range(WORKDAYS_PER_WEEK)]
 
     projects = list(Project.objects.filter(is_active=True).order_by("name"))
     project_id = request.GET.get("project_id") or request.POST.get("project_id")
@@ -189,7 +190,8 @@ def timesheet_weekly(request):
             if not worker_id_str:
                 continue
 
-            day_hours = all_hours[row_index * 7: row_index * 7 + 7]
+            day_count = len(days)
+            day_hours = all_hours[row_index * day_count: row_index * day_count + day_count]
 
             for day_offset, raw in enumerate(day_hours):
                 day = days[day_offset]
