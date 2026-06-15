@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 import shutil
 import tempfile
+from unittest.mock import patch
 
 from django.contrib import admin as django_admin
 from django.contrib.auth import get_user_model
@@ -146,6 +147,13 @@ class TimesheetWeekdayEntryTests(TestCase):
             password="pass",
             is_staff=True,
         )
+        self.foreman_user = User.objects.create_user(
+            username="foreman@example.com",
+            email="foreman@example.com",
+            password="pass",
+        )
+        foreman_group = Group.objects.create(name="Foreman")
+        self.foreman_user.groups.add(foreman_group)
         self.worker = Worker.objects.create(
             display_name="A Worker",
             email="worker@example.com",
@@ -193,6 +201,70 @@ class TimesheetWeekdayEntryTests(TestCase):
                 (date(2026, 6, 12), Decimal("5.00")),
             ],
         )
+
+    @override_settings(TIMESHEET_ENTRY_DEADLINE_WEEKDAY="Tuesday")
+    def test_foreman_before_deadline_enters_last_week(self):
+        self.client.force_login(self.foreman_user)
+
+        with patch("core.views.timezone.localdate", return_value=date(2026, 6, 15)):
+            response = self.client.get(
+                reverse("timesheet"),
+                {"project_id": str(self.project.pk), "week": "2026-06-19"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["week_start"], date(2026, 6, 8))
+        self.assertEqual(response.context["week_friday"], date(2026, 6, 12))
+        self.assertEqual(
+            response.context["days"],
+            [
+                date(2026, 6, 8),
+                date(2026, 6, 9),
+                date(2026, 6, 10),
+                date(2026, 6, 11),
+                date(2026, 6, 12),
+            ],
+        )
+
+    @override_settings(TIMESHEET_ENTRY_DEADLINE_WEEKDAY="Tuesday")
+    def test_foreman_from_deadline_through_next_monday_enters_current_work_week(self):
+        self.client.force_login(self.foreman_user)
+
+        for today in (date(2026, 6, 16), date(2026, 6, 22)):
+            with self.subTest(today=today):
+                with patch("core.views.timezone.localdate", return_value=today):
+                    response = self.client.get(
+                        reverse("timesheet"),
+                        {"project_id": str(self.project.pk), "week": "2026-06-12"},
+                    )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.context["week_start"], date(2026, 6, 15))
+                self.assertEqual(response.context["week_friday"], date(2026, 6, 19))
+                self.assertEqual(
+                    response.context["days"],
+                    [
+                        date(2026, 6, 15),
+                        date(2026, 6, 16),
+                        date(2026, 6, 17),
+                        date(2026, 6, 18),
+                        date(2026, 6, 19),
+                    ],
+                )
+
+    @override_settings(TIMESHEET_ENTRY_DEADLINE_WEEKDAY="Monday")
+    def test_foreman_deadline_weekday_setting_controls_rollover(self):
+        self.client.force_login(self.foreman_user)
+
+        with patch("core.views.timezone.localdate", return_value=date(2026, 6, 15)):
+            response = self.client.get(
+                reverse("timesheet"),
+                {"project_id": str(self.project.pk), "week": "2026-06-12"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["week_start"], date(2026, 6, 15))
+        self.assertEqual(response.context["week_friday"], date(2026, 6, 19))
 
 
 class GroupAdminAccessTests(TestCase):

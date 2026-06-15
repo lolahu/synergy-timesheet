@@ -151,3 +151,6 @@ LOGOUT_REDIRECT_URL = '/'
 
 # Role group names
 FOREMAN_GROUP_NAME = os.environ.get('FOREMAN_GROUP_NAME', 'Foreman')
+
+# Foremen enter last week's timesheet until this weekday, then the current week.
+TIMESHEET_ENTRY_DEADLINE_WEEKDAY = os.environ.get('TIMESHEET_ENTRY_DEADLINE_WEEKDAY', 'Tuesday')

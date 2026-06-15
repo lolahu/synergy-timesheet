@@ -1,7 +1,9 @@
 from django.contrib.auth import get_user_model, login, logout, authenticate
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
 from django.db.models import Q
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -10,6 +12,30 @@ from .permissions import can_enter_for_others
 
 User = get_user_model()
 WORKDAYS_PER_WEEK = 5
+WEEKDAY_NAMES = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+
+def timesheet_entry_deadline_weekday():
+    configured_weekday = getattr(settings, "TIMESHEET_ENTRY_DEADLINE_WEEKDAY", "Tuesday")
+    weekday_index = WEEKDAY_NAMES.get(str(configured_weekday).strip().lower())
+    if weekday_index is None:
+        return WEEKDAY_NAMES["tuesday"]
+    return weekday_index
+
+
+def foreman_timesheet_week_start(today):
+    this_monday = today - timedelta(days=today.weekday())
+    if today.weekday() < timesheet_entry_deadline_weekday():
+        return this_monday - timedelta(weeks=1)
+    return this_monday
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -109,8 +135,7 @@ def timesheet_weekly(request):
     if not can_enter_for_others(request.user):
         return render(request, "core/not_authorized.html", status=403)
 
-    today = date.today()
-    is_monday = today.weekday() == 0
+    today = timezone.localdate()
     is_admin = request.user.is_staff
     this_monday = today - timedelta(days=today.weekday())
     last_monday = this_monday - timedelta(weeks=1)
@@ -129,18 +154,8 @@ def timesheet_weekly(request):
                 week_start = this_monday
         else:
             week_start = this_monday
-    elif is_monday:
-        if week_str:
-            try:
-                week_start = date.fromisoformat(week_str)
-                if week_start not in (this_monday, last_monday):
-                    week_start = this_monday
-            except ValueError:
-                week_start = this_monday
-        else:
-            week_start = this_monday
     else:
-        week_start = this_monday
+        week_start = foreman_timesheet_week_start(today)
 
     week_friday = week_start + timedelta(days=4)
     days = [week_start + timedelta(days=i) for i in range(WORKDAYS_PER_WEEK)]
@@ -161,7 +176,6 @@ def timesheet_weekly(request):
             "days": days,
             "workers": workers,
             "grid": {},
-            "is_monday": is_monday,
             "this_monday": this_monday,
             "last_monday": last_monday,
             "this_friday": this_friday,
@@ -247,7 +261,6 @@ def timesheet_weekly(request):
         "grid": grid,
         "prefilled_workers": prefilled_workers,
         "extra_blank_rows": extra_blank_rows,
-        "is_monday": is_monday,
         "this_monday": this_monday,
         "last_monday": last_monday,
         "this_friday": this_friday,

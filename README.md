@@ -107,6 +107,7 @@ SECRET_KEY=local-dev-secret
 DEBUG=True
 ALLOWED_HOSTS=127.0.0.1,localhost
 FOREMAN_GROUP_NAME=Foreman
+TIMESHEET_ENTRY_DEADLINE_WEEKDAY=Tuesday
 ```
 
 ## Production Configuration
@@ -129,6 +130,7 @@ CSRF_TRUSTED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com,https://y
 DATABASE_URL=<provided-by-railway-postgresql>
 MEDIA_ROOT=/app/media
 FOREMAN_GROUP_NAME=Foreman
+TIMESHEET_ENTRY_DEADLINE_WEEKDAY=Tuesday
 SECURE_SSL_REDIRECT=True
 ```
 
