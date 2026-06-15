@@ -138,6 +138,63 @@ class ForemanPermissionTests(TestCase):
         self.assertTrue(can_enter_for_others(user))
 
 
+class TimesheetWeekdayEntryTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username="admin@example.com",
+            email="admin@example.com",
+            password="pass",
+            is_staff=True,
+        )
+        self.worker = Worker.objects.create(
+            display_name="A Worker",
+            email="worker@example.com",
+        )
+        self.project = Project.objects.create(name="A Project")
+
+    def test_timesheet_entry_only_renders_weekdays(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(
+            reverse("timesheet"),
+            {"project_id": str(self.project.pk), "week": "2026-06-12"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["days"]), 5)
+        self.assertContains(response, "Mon")
+        self.assertContains(response, "Fri")
+        self.assertNotContains(response, "Sat")
+        self.assertNotContains(response, "Sun")
+
+    def test_timesheet_submission_creates_weekday_entries_only(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.post(
+            reverse("timesheet"),
+            {
+                "project_id": str(self.project.pk),
+                "week": "2026-06-12",
+                "row_worker[]": [str(self.worker.pk)],
+                "row_hours[]": ["1", "2", "3", "4", "5"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        entries = TimeEntry.objects.order_by("work_date")
+        self.assertEqual(entries.count(), 5)
+        self.assertEqual(
+            list(entries.values_list("work_date", "hours")),
+            [
+                (date(2026, 6, 8), Decimal("1.00")),
+                (date(2026, 6, 9), Decimal("2.00")),
+                (date(2026, 6, 10), Decimal("3.00")),
+                (date(2026, 6, 11), Decimal("4.00")),
+                (date(2026, 6, 12), Decimal("5.00")),
+            ],
+        )
+
+
 class GroupAdminAccessTests(TestCase):
     def test_staff_admin_can_create_foreman_group_without_superuser(self):
         admin_user = User.objects.create_user(
